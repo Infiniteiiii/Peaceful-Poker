@@ -4,7 +4,7 @@ from poker_trainer.app import run
 
 
 def main() -> int:
-    """uun the Poker Decision Trainer application."""
+    """Run the Peaceful Poker application."""
     return run()
 
 

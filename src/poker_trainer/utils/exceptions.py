@@ -21,8 +21,20 @@ class InvalidGameStateError(PokerTrainerError):
     """Raised when the entered game state is impossible."""
 
 
+class InvalidBoardLengthError(InvalidGameStateError):
+    """Raised when community-card count cannot form a valid Hold'em street."""
+
+
 class InvalidBetError(PokerTrainerError):
     """Raised when betting information is invalid."""
+
+
+class UnsupportedExactCalculationError(PokerTrainerError):
+    """Raised when exact enumeration is intentionally unsupported for a state."""
+
+
+class UnsupportedRangeError(PokerTrainerError):
+    """Raised when an opponent range is malformed or unsupported."""
 
 
 class SimulationCancelledError(PokerTrainerError):
@@ -35,3 +47,7 @@ class InsufficientInformationError(PokerTrainerError):
 
 class StorageError(PokerTrainerError):
     """Raised when saved hand data cannot be loaded or written."""
+
+
+class UnsupportedSaveVersionError(StorageError):
+    """Raised when a save file has a future or unsupported schema version."""

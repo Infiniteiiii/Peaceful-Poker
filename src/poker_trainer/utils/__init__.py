@@ -1,1 +1,1 @@
-"""ttility helpers for Poker Decision Trainer."""
+"""Utility helpers for Peaceful Poker."""

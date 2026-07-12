@@ -1,28 +1,28 @@
-"""Minimal PySide6 application shell for the current development stage."""
+"""PySide6 application entry for Peaceful Poker."""
 
+import os
 import sys
+
+from poker_trainer.services.logging_service import configure_logging
 
 
 def run() -> int:
-    """Start the desktop application shell."""
+    """Start the desktop application."""
     try:
-        from PySide6.QtCore import Qt
-        from PySide6.QtWidgets import QApplication, QLabel, QMainWindow
+        from PySide6 import QtCore, QtWidgets
     except ImportError as exc:  # pragma: no cover - depends on optional local install state
         raise RuntimeError(
-            "PySide6 is required to run the application shell. "
+            "PySide6 is required to run Peaceful Poker. "
             "Install dependencies with `python -m pip install -e .[dev]`."
         ) from exc
 
-    app = QApplication(sys.argv)
-    window = QMainWindow()
-    window.setWindowTitle("Peaceful Poker")
+    from poker_trainer.ui.main_window import MainWindow
 
-    label = QLabel("Peaceful Poker\n\nDevelopment build: card, deck, and hand evaluator stage.")
-    label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    label.setMinimumSize(640, 360)
-
-    window.setCentralWidget(label)
-    window.resize(900, 600)
-    window.show()
-    return app.exec()
+    configure_logging()
+    app = QtWidgets.QApplication(sys.argv)
+    main_window = MainWindow(QtWidgets, QtCore)
+    main_window.show()
+    autoclose = os.environ.get("PEACEFUL_POKER_AUTOCLOSE_MS")
+    if autoclose:
+        QtCore.QTimer.singleShot(int(autoclose), app.quit)
+    return int(app.exec())

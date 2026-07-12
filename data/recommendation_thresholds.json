@@ -1,0 +1,11 @@
+{
+  "clear_call_margin": 0.05,
+  "thin_call_margin": 0.0,
+  "value_bet_equity": 0.62,
+  "strong_raise_equity": 0.72,
+  "low_confidence_margin": 0.03,
+  "medium_confidence_margin": 0.08,
+  "small_bet_fraction": 0.33,
+  "medium_bet_fraction": 0.60,
+  "large_bet_fraction": 0.85
+}
