@@ -1,0 +1,8 @@
+{
+  "theme": "light",
+  "default_simulation_count": 25000,
+  "automatic_analysis": false,
+  "percentage_precision": 1,
+  "default_players": 6,
+  "currency": "chips"
+}
