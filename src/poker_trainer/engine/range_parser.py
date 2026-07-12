@@ -37,6 +37,19 @@ def filter_combinations(combos: tuple[CardCombo, ...], range_text: str) -> tuple
     return tuple(dict.fromkeys(accepted))
 
 
+def combination_matches_range(combo: CardCombo, range_text: str) -> bool:
+    """Return whether one legal combo matches a preset or supported notation."""
+    normalized = range_text.strip().lower()
+    if normalized in {"", "random", "any two"}:
+        return True
+    if normalized in _PRESET_NAMES:
+        return bool(_filter_preset((combo,), normalized))
+    tokens = tuple(part.strip() for part in range_text.split(",") if part.strip())
+    if not tokens:
+        return True
+    return any(_matches_token(combo, token.upper()) for token in tokens)
+
+
 def _filter_preset(combos: tuple[CardCombo, ...], preset: str) -> tuple[CardCombo, ...]:
     if preset == "premium":
         return tuple(

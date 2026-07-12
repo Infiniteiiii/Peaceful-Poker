@@ -3,6 +3,7 @@
 from threading import Event
 from typing import Any
 
+from poker_trainer.models.action_aware import ActionAwareSettings
 from poker_trainer.models.game_state import GameState
 from poker_trainer.services.analysis_service import analyze_game_state
 
@@ -17,6 +18,7 @@ class AnalysisWorker:  # pragma: no cover - exercised through UI smoke tests
         opponent_range: str,
         simulation_count: int,
         seed: int | None,
+        action_aware_settings: ActionAwareSettings | None = None,
     ) -> None:
         """Create a QObject instance with dynamically attached signals."""
         base = qtcore.QObject
@@ -39,6 +41,8 @@ class AnalysisWorker:  # pragma: no cover - exercised through UI smoke tests
                         seed=seed,
                         progress_callback=self.progress.emit,
                         cancel_callback=self.cancelled.is_set,
+                        include_action_aware=True,
+                        action_aware_settings=action_aware_settings,
                     )
                 except Exception as exc:  # noqa: BLE001 - user-facing worker boundary
                     self.error.emit(str(exc))

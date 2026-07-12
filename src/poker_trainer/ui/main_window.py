@@ -4,9 +4,16 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
+from poker_trainer.engine.action_aware_simulator import action_aware_preset
+from poker_trainer.models.action_aware import (
+    OpponentProfile,
+    TablePlayer,
+    TableState,
+    create_default_table,
+)
 from poker_trainer.models.card import Card, Rank, Suit
 from poker_trainer.models.equity import SimulationPreset
-from poker_trainer.models.game_state import GameState, Position
+from poker_trainer.models.game_state import GameState, Position, street_from_board_length
 from poker_trainer.models.hand import HandCategory
 from poker_trainer.resource_path import resource_path
 from poker_trainer.services.analysis_service import AnalysisResult
@@ -28,6 +35,7 @@ _PRESETS = {
     "Accurate": SimulationPreset.ACCURATE,
     "Very Accurate": SimulationPreset.VERY_ACCURATE,
 }
+_ACTION_PRESETS = ("Quick", "Standard", "Accurate")
 _EMPTY_RESULT = "Enter two hero cards and a valid board, then choose Analyze."
 
 
@@ -51,6 +59,7 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
         self.signal_bridge: Any | None = None
         self.training_prompt: str | None = None
         self.close_pending = False
+        self.player_overrides: dict[int, TablePlayer] = {}
         self._suspend_changes = True
         owner = self
 
@@ -119,6 +128,9 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
         self.previous_action.addItems(["None", "Checked to hero", "Bet to hero", "Raised to hero"])
         self.range_combo = self.qtwidgets.QComboBox()
         self.range_combo.addItems(list(_RANGE_OPTIONS))
+        self.profile_combo = self.qtwidgets.QComboBox()
+        for profile in OpponentProfile:
+            self.profile_combo.addItem(profile.display_name, profile.value)
         self.preset_combo = self.qtwidgets.QComboBox()
         self.preset_combo.addItems(list(_PRESETS))
         default_preset = next(
@@ -130,6 +142,20 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
             "Standard",
         )
         self.preset_combo.setCurrentText(default_preset)
+        self.action_preset_combo = self.qtwidgets.QComboBox()
+        self.action_preset_combo.addItems(list(_ACTION_PRESETS))
+        self.players_behind = self.qtwidgets.QSpinBox()
+        self.players_behind.setRange(0, max(0, self.settings.default_player_count - 1))
+        self.folded_seats = self.qtwidgets.QLineEdit()
+        self.folded_seats.setPlaceholderText("e.g. 2, 4")
+        self.called_seats = self.qtwidgets.QLineEdit()
+        self.called_seats.setPlaceholderText("e.g. 1, 3")
+        self.aggressor_seat = self.qtwidgets.QSpinBox()
+        self.aggressor_seat.setRange(-1, 9)
+        self.aggressor_seat.setSpecialValueText("None")
+        self.action_order_label = self.qtwidgets.QLabel("Action order: calculating...")
+        self.action_order_label.setWordWrap(True)
+        self.advanced_opponents = self.qtwidgets.QPushButton("Edit individual opponents")
         self.auto_analysis = self.qtwidgets.QCheckBox("Analyze automatically after changes")
         self.auto_analysis.setChecked(self.settings.automatic_analysis)
         setup_rows = (
@@ -154,15 +180,47 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
             ("Previous action", self.previous_action, "Most recent action facing hero."),
             ("Opponent range", self.range_combo, "Simplified opponent holding assumption."),
             (
+                "Opponent profile",
+                self.profile_combo,
+                "Default transparent behavior profile for opponents.",
+            ),
+            (
                 "Simulation accuracy",
                 self.preset_combo,
                 "Monte Carlo iteration count when exact enumeration is impractical.",
+            ),
+            (
+                "Action-aware accuracy",
+                self.action_preset_combo,
+                "Policy simulations per candidate action.",
+            ),
+            (
+                "Players behind hero",
+                self.players_behind,
+                "Opponents still eligible to act after hero in this betting round.",
+            ),
+            (
+                "Folded seat numbers",
+                self.folded_seats,
+                "Comma-separated zero-based seats that have folded.",
+            ),
+            (
+                "Called seat numbers",
+                self.called_seats,
+                "Comma-separated seats that called before hero.",
+            ),
+            (
+                "Bettor / raiser seat",
+                self.aggressor_seat,
+                "Seat responsible for the current amount to call, or None.",
             ),
         )
         for label, widget, tooltip in setup_rows:
             widget.setToolTip(tooltip)
             game.addRow(label, widget)
         game.addRow("Analysis mode", self.auto_analysis)
+        game.addRow("Advanced table", self.advanced_opponents)
+        game.addRow("Order", self.action_order_label)
         outer.addWidget(game_group)
 
         cards_group = self.qtwidgets.QGroupBox("Cards")
@@ -229,8 +287,33 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
             2, self.qtwidgets.QHeaderView.ResizeMode.ResizeToContents
         )
         self._clear_probability_table()
+        self.action_table = self.qtwidgets.QTableWidget(0, 8)
+        self.action_table.setHorizontalHeaderLabels(
+            [
+                "Action",
+                "Net EV",
+                "95% CI",
+                "All fold",
+                "One continues",
+                "Multiple",
+                "Faces raise",
+                "Called equity",
+            ]
+        )
+        self.action_table.verticalHeader().setVisible(False)
+        self.action_table.setEditTriggers(
+            self.qtwidgets.QAbstractItemView.EditTrigger.NoEditTriggers
+        )
+        self.action_table.horizontalHeader().setSectionResizeMode(
+            0, self.qtwidgets.QHeaderView.ResizeMode.Stretch
+        )
+        for column in range(1, 8):
+            self.action_table.horizontalHeader().setSectionResizeMode(
+                column, self.qtwidgets.QHeaderView.ResizeMode.ResizeToContents
+            )
         self.tabs.addTab(self.output, "Overview")
         self.tabs.addTab(self.probability_table, "Final hand probabilities")
+        self.tabs.addTab(self.action_table, "Action-aware EV")
         layout.addWidget(self.status_label)
         layout.addWidget(self.progress)
         layout.addWidget(self.tabs, 1)
@@ -297,6 +380,8 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
     def _connect_inputs(self) -> None:
         for widget in (
             self.players,
+            self.players_behind,
+            self.aggressor_seat,
             self.small_blind,
             self.big_blind,
             self.ante,
@@ -306,11 +391,21 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
             self.effective,
         ):
             widget.valueChanged.connect(self._input_changed)
-        for widget in (self.position, self.previous_action, self.range_combo, self.preset_combo):
+        for widget in (
+            self.position,
+            self.previous_action,
+            self.range_combo,
+            self.profile_combo,
+            self.preset_combo,
+            self.action_preset_combo,
+        ):
             widget.currentIndexChanged.connect(self._input_changed)
-        for edit in self.card_edits:
+        for edit in (*self.card_edits, self.folded_seats, self.called_seats):
             edit.textChanged.connect(self._input_changed)
+        self.players.valueChanged.connect(self._player_count_changed)
+        self.advanced_opponents.clicked.connect(self.opponent_editor)
         self.auto_analysis.toggled.connect(self._auto_analysis_changed)
+        self._update_action_order()
 
     def _state(self) -> GameState:
         hero_text = [edit.text().strip() for edit in self.card_edits[:2]]
@@ -325,6 +420,8 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
             raise ValueError("Enter the turn before the river.")
         hero = tuple(Card.from_code(text) for text in hero_text)
         board = tuple(Card.from_code(text) for text in board_text if text)
+        street = street_from_board_length(len(board))
+        table_state = self._build_table_state(street.value)
         return GameState(
             active_players=int(self.players.value()),
             hero_cards=hero,
@@ -339,7 +436,89 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
             ante=float(self.ante.value()),
             previous_action=str(self.previous_action.currentText()),
             requested_simulation_count=_PRESETS[str(self.preset_combo.currentText())],
+            table_state=table_state,
         )
+
+    def _build_table_state(self, street: str) -> TableState:
+        player_count = int(self.players.value())
+        hero_position = Position(str(self.position.currentData()))
+        base = create_default_table(
+            player_count,
+            hero_position.value,
+            street,
+            float(self.stack.value()),
+            float(self.effective.value()),
+        )
+        folded = self._parse_seats(self.folded_seats.text(), player_count, "folded")
+        called = self._parse_seats(self.called_seats.text(), player_count, "called")
+        aggressor = int(self.aggressor_seat.value())
+        if aggressor >= player_count:
+            raise ValueError("The bettor/raiser seat is outside the active table.")
+        clockwise_opponents = tuple(
+            player.seat for player in base.clockwise_after(base.hero_seat) if not player.is_hero
+        )
+        behind_count = min(int(self.players_behind.value()), len(clockwise_opponents))
+        behind = set(clockwise_opponents[:behind_count])
+        default_profile = OpponentProfile(str(self.profile_combo.currentData()))
+        players: list[TablePlayer] = []
+        for player in base.players:
+            if player.is_hero:
+                players.append(player)
+                continue
+            is_folded = player.seat in folded
+            is_called = player.seat in called
+            is_aggressor = player.seat == aggressor
+            acted = player.seat not in behind or is_called or is_aggressor
+            previous_actions: tuple[str, ...] = ()
+            if is_called:
+                previous_actions = ("Called",)
+            elif is_aggressor:
+                previous_actions = ("Raised",)
+            elif acted:
+                previous_actions = ("Checked",)
+            contribution = (
+                float(self.call.value()) if is_called or is_aggressor else player.round_contribution
+            )
+            configured = replace(
+                player,
+                folded=is_folded,
+                eligible_to_act=not is_folded,
+                profile=default_profile,
+                range_text=str(self.range_combo.currentText()),
+                previous_actions=previous_actions,
+                acted_this_round=acted,
+                round_contribution=contribution,
+                total_contribution=max(player.total_contribution, contribution),
+            )
+            override = self.player_overrides.get(player.seat)
+            if override:
+                configured = replace(
+                    configured,
+                    position=override.position,
+                    folded=override.folded,
+                    all_in=override.all_in,
+                    stack=override.stack,
+                    profile=override.profile,
+                    range_text=override.range_text,
+                    previous_actions=override.previous_actions,
+                    eligible_to_act=override.eligible_to_act,
+                    acted_this_round=override.acted_this_round,
+                )
+            players.append(configured)
+        return replace(base, players=tuple(players), current_actor_seat=base.hero_seat)
+
+    def _parse_seats(self, text: str, player_count: int, label: str) -> set[int]:
+        if not text.strip():
+            return set()
+        try:
+            seats = {int(part.strip()) for part in text.split(",") if part.strip()}
+        except ValueError as exc:
+            raise ValueError(
+                f"The {label} seat list must contain comma-separated numbers."
+            ) from exc
+        if any(seat < 0 or seat >= player_count for seat in seats):
+            raise ValueError(f"A {label} seat is outside the active table.")
+        return seats
 
     def analyze(self) -> None:
         """Start a generation-safe background analysis."""
@@ -363,6 +542,7 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
             str(self.range_combo.currentText()),
             _PRESETS[str(self.preset_combo.currentText())],
             7,
+            action_aware_preset(str(self.action_preset_combo.currentText())),
         )
         worker = factory.object
         self.thread = thread
@@ -428,9 +608,11 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
             formatted = self.training_prompt + "\n\n" + formatted
         self.output.setPlainText(formatted)
         self._populate_probability_table(result)
+        self._populate_action_table(result)
+        action_time = result.action_aware.execution_time if result.action_aware else 0.0
         self.status_label.setText(
-            f"Analysis complete in {result.equity.execution_time:.2f} seconds using "
-            f"{result.equity.calculation_method.replace('_', ' ')}."
+            f"Analysis complete: showdown {result.equity.execution_time:.2f}s, "
+            f"action-aware {action_time:.2f}s."
         )
         self.tabs.setCurrentWidget(self.output)
 
@@ -471,8 +653,10 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
         self.training_prompt = None
         self.latest_result = None
         self._clear_probability_table()
+        self.action_table.setRowCount(0)
         self.output.setPlainText("Inputs changed. Run analysis to refresh the results.")
         self.status_label.setText("Results are out of date.")
+        self._update_action_order()
         self._sync_button_states(running=self.thread is not None and self.thread.isRunning())
         if self.auto_analysis.isChecked():
             self._auto_timer.start()
@@ -484,6 +668,134 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
             self._auto_timer.start()
         else:
             self._auto_timer.stop()
+
+    def _player_count_changed(self, player_count: int) -> None:
+        self.players_behind.setMaximum(max(0, player_count - 1))
+        self.aggressor_seat.setMaximum(max(0, player_count - 1))
+        self.player_overrides = {
+            seat: values for seat, values in self.player_overrides.items() if seat < player_count
+        }
+        self._update_action_order()
+
+    def _update_action_order(self) -> None:
+        if not hasattr(self, "action_order_label"):
+            return
+        board_count = sum(1 for edit in self.card_edits[2:] if edit.text().strip())
+        street = {0: "preflop", 3: "flop", 4: "turn", 5: "river"}.get(board_count, "flop")
+        try:
+            table = self._build_table_state(street)
+            order = " -> ".join(
+                table.player(seat).position.replace("_", " ").title()
+                for seat in table.action_order()
+            )
+            behind = table.players_after_hero()
+            behind_text = ", ".join(player.position.replace("_", " ").title() for player in behind)
+            self.action_order_label.setText(
+                f"Action order: {order}. Behind hero: {behind_text or 'none'}."
+            )
+        except Exception as exc:  # noqa: BLE001 - live preview validation boundary
+            self.action_order_label.setText(f"Action order unavailable: {exc}")
+
+    def opponent_editor(self) -> None:
+        """Edit individual opponent status, stack, profile, range, and prior action."""
+        board_count = sum(1 for edit in self.card_edits[2:] if edit.text().strip())
+        street = {0: "preflop", 3: "flop", 4: "turn", 5: "river"}.get(board_count, "flop")
+        try:
+            table_state = self._build_table_state(street)
+        except Exception as exc:  # noqa: BLE001 - user-facing validation boundary
+            self._show_error(str(exc))
+            return
+        dialog = self.qtwidgets.QDialog(self.window)
+        dialog.setWindowTitle("Advanced opponent editor")
+        layout = self.qtwidgets.QVBoxLayout(dialog)
+        editor = self.qtwidgets.QTableWidget(len(table_state.players), 8)
+        editor.setHorizontalHeaderLabels(
+            ["Seat", "Position", "Folded", "All-in", "Stack", "Profile", "Range", "Previous"]
+        )
+        controls: dict[int, tuple[Any, Any, Any, Any, Any, Any, Any]] = {}
+        for row, player in enumerate(table_state.players):
+            seat_item = self.qtwidgets.QTableWidgetItem(str(player.seat))
+            seat_item.setFlags(seat_item.flags() & ~self.qtcore.Qt.ItemFlag.ItemIsEditable)
+            editor.setItem(row, 0, seat_item)
+            position_item = self.qtwidgets.QTableWidgetItem(player.position)
+            editor.setItem(row, 1, position_item)
+            folded = self.qtwidgets.QCheckBox()
+            folded.setChecked(player.folded)
+            all_in = self.qtwidgets.QCheckBox()
+            all_in.setChecked(player.all_in)
+            stack = self._money_spin(player.stack)
+            profile = self.qtwidgets.QComboBox()
+            for option in OpponentProfile:
+                profile.addItem(option.display_name, option.value)
+            profile.setCurrentIndex(profile.findData(player.profile.value))
+            range_edit = self.qtwidgets.QLineEdit(player.range_text)
+            previous = self.qtwidgets.QLineEdit(", ".join(player.previous_actions))
+            if player.is_hero:
+                folded.setEnabled(False)
+                all_in.setEnabled(False)
+                profile.setEnabled(False)
+                range_edit.setEnabled(False)
+            editor.setCellWidget(row, 2, folded)
+            editor.setCellWidget(row, 3, all_in)
+            editor.setCellWidget(row, 4, stack)
+            editor.setCellWidget(row, 5, profile)
+            editor.setCellWidget(row, 6, range_edit)
+            editor.setCellWidget(row, 7, previous)
+            controls[player.seat] = (
+                position_item,
+                folded,
+                all_in,
+                stack,
+                profile,
+                range_edit,
+                previous,
+            )
+        editor.horizontalHeader().setSectionResizeMode(
+            self.qtwidgets.QHeaderView.ResizeMode.ResizeToContents
+        )
+        editor.horizontalHeader().setSectionResizeMode(
+            1, self.qtwidgets.QHeaderView.ResizeMode.Stretch
+        )
+        editor.horizontalHeader().setSectionResizeMode(
+            7, self.qtwidgets.QHeaderView.ResizeMode.Stretch
+        )
+        layout.addWidget(editor)
+        buttons = self.qtwidgets.QDialogButtonBox(
+            self.qtwidgets.QDialogButtonBox.StandardButton.Save
+            | self.qtwidgets.QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        dialog.resize(980, 420)
+        if dialog.exec() != self.qtwidgets.QDialog.DialogCode.Accepted:
+            return
+        overrides: dict[int, TablePlayer] = {}
+        for player in table_state.players:
+            if player.is_hero:
+                continue
+            position_item, folded, all_in, stack, profile, range_edit, previous = controls[
+                player.seat
+            ]
+            is_folded = folded.isChecked()
+            is_all_in = all_in.isChecked() and not is_folded
+            actions = tuple(
+                action.strip() for action in previous.text().split(",") if action.strip()
+            )
+            overrides[player.seat] = replace(
+                player,
+                position=position_item.text().strip() or player.position,
+                folded=is_folded,
+                all_in=is_all_in,
+                stack=0.0 if is_all_in else float(stack.value()),
+                profile=OpponentProfile(str(profile.currentData())),
+                range_text=range_edit.text().strip() or "random",
+                previous_actions=actions,
+                eligible_to_act=not is_folded and not is_all_in,
+                acted_this_round=bool(actions),
+            )
+        self.player_overrides = overrides
+        self._input_changed()
 
     def _pick_card(self, field: Any) -> None:
         dialog = self.qtwidgets.QDialog(self.window)
@@ -538,6 +850,7 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
         self.latest_result = None
         self.output.setPlainText(_EMPTY_RESULT)
         self._clear_probability_table()
+        self.action_table.setRowCount(0)
         self.status_label.setText("New hand ready.")
         self.progress.setRange(0, 1)
         self.progress.setValue(0)
@@ -709,6 +1022,36 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
         self.call.setValue(state.amount_to_call)
         self.stack.setValue(state.hero_stack)
         self.effective.setValue(state.effective_stack)
+        if state.table_state is not None:
+            opponents = state.table_state.active_opponents
+            if opponents:
+                self.profile_combo.setCurrentIndex(
+                    self.profile_combo.findData(opponents[0].profile.value)
+                )
+                self.range_combo.setCurrentText(opponents[0].range_text)
+            self.folded_seats.setText(
+                ", ".join(str(player.seat) for player in state.table_state.players if player.folded)
+            )
+            self.called_seats.setText(
+                ", ".join(
+                    str(player.seat)
+                    for player in state.table_state.players
+                    if any("call" in action.lower() for action in player.previous_actions)
+                )
+            )
+            aggressors = [
+                player.seat
+                for player in state.table_state.players
+                if any(
+                    "bet" in action.lower() or "raise" in action.lower()
+                    for action in player.previous_actions
+                )
+            ]
+            self.aggressor_seat.setValue(aggressors[-1] if aggressors else -1)
+            self.players_behind.setValue(len(state.table_state.players_after_hero()))
+            self.player_overrides = {
+                player.seat: player for player in state.table_state.players if not player.is_hero
+            }
         values = [*state.hero_cards, *state.community_cards]
         for index, edit in enumerate(self.card_edits):
             edit.setText(values[index].code if index < len(values) else "")
@@ -717,6 +1060,8 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
         self.latest_result = None
         self.output.setPlainText("Hand loaded. Run analysis to calculate current results.")
         self._clear_probability_table()
+        self.action_table.setRowCount(0)
+        self._update_action_order()
         self._sync_button_states()
 
     def _apply_theme(self, theme: str) -> None:
@@ -740,6 +1085,28 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
             for column, value in enumerate(values):
                 self.probability_table.setItem(row, column, self.qtwidgets.QTableWidgetItem(value))
 
+    def _populate_action_table(self, result: AnalysisResult) -> None:
+        action_aware = result.action_aware
+        if action_aware is None:
+            self.action_table.setRowCount(0)
+            return
+        precision = self.settings.percentage_precision
+        self.action_table.setRowCount(len(action_aware.action_results))
+        for row, action_result in enumerate(action_aware.action_results):
+            values = (
+                action_result.candidate.label,
+                f"{action_result.estimated_net_ev:.2f}",
+                f"{action_result.confidence_interval_low:.2f} to "
+                f"{action_result.confidence_interval_high:.2f}",
+                _percent(action_result.immediate_fold_probability, precision),
+                _percent(action_result.exactly_one_continues_probability, precision),
+                _percent(action_result.multiple_continue_probability, precision),
+                _percent(action_result.facing_raise_probability, precision),
+                _percent(action_result.conditional_showdown_equity, precision),
+            )
+            for column, value in enumerate(values):
+                self.action_table.setItem(row, column, self.qtwidgets.QTableWidgetItem(value))
+
     def _clear_probability_table(self) -> None:
         for row, category in enumerate(HandCategory):
             self.probability_table.setItem(
@@ -762,6 +1129,7 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
         self.output.setPlainText(message)
         self.status_label.setText("Unable to complete the requested action.")
         self._clear_probability_table()
+        self.action_table.setRowCount(0)
         self._sync_button_states(running=self.thread is not None and self.thread.isRunning())
 
     def _save_settings_safely(self) -> None:
@@ -811,6 +1179,8 @@ def _format_result(result: AnalysisResult, precision: int = 1) -> str:
         f"Draws: {draws}",
         f"Apparent unique outs: {len(result.outs.unique_outs)}",
         "",
+        "RAW SHOWDOWN ANALYSIS",
+        "Assumption: every currently included opponent reaches showdown.",
         f"Win: {_percent(result.equity.win_percentage, precision)}",
         f"Tie: {_percent(result.equity.tie_percentage, precision)}",
         f"Loss: {_percent(result.equity.loss_percentage, precision)}",
@@ -825,13 +1195,38 @@ def _format_result(result: AnalysisResult, precision: int = 1) -> str:
         f"Required equity: {_percent(pot_odds.required_equity, precision)}",
         f"Simplified call EV: {ev}",
         f"Legal actions: {', '.join(result.recommendation.legal_alternatives)}",
-        f"Recommendation: {result.recommendation.primary_action} "
+        f"Showdown-only rule recommendation: {result.recommendation.primary_action} "
         f"({result.recommendation.confidence.value} confidence)",
         "Reasons: " + "; ".join(result.recommendation.reasons),
         "Risks: " + "; ".join(result.recommendation.risks),
         "Assumptions: " + "; ".join(result.recommendation.assumptions),
         result.recommendation.explanation,
     ]
+    if result.action_aware is not None:
+        action_aware = result.action_aware
+        lines.extend(
+            [
+                "",
+                "ACTION-AWARE ANALYSIS",
+                "Action-aware results depend on the entered opponent profiles and are estimates, "
+                "not exact predictions.",
+                f"Recommended action by estimated net EV: {action_aware.recommended_action}",
+            ]
+        )
+        if action_aware.uncertainty_note:
+            lines.append("Uncertainty: " + action_aware.uncertainty_note)
+        for action_result in action_aware.action_results:
+            lines.append(
+                f"{action_result.candidate.label}: EV {action_result.estimated_net_ev:.2f} chips; "
+                f"95% CI {action_result.confidence_interval_low:.2f} to "
+                f"{action_result.confidence_interval_high:.2f}; all fold "
+                f"{_percent(action_result.immediate_fold_probability, precision)}; "
+                f"continue {_percent(action_result.continue_probability, precision)}; "
+                f"faces raise {_percent(action_result.facing_raise_probability, precision)}; "
+                f"called equity "
+                f"{_percent(action_result.conditional_showdown_equity, precision)}"
+            )
+        lines.append("Action-aware assumptions: " + "; ".join(action_aware.assumptions))
     return "\n".join(lines)
 
 

@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 
+from poker_trainer.engine.action_aware_simulator import calculate_action_aware_ev
 from poker_trainer.engine.board_analyzer import BoardAnalysis, analyze_board
 from poker_trainer.engine.current_hand import CurrentHandAnalysis, analyze_current_hand
 from poker_trainer.engine.draw_detector import Draw, detect_draws
@@ -15,6 +16,7 @@ from poker_trainer.engine.probability_calculator import (
     FinalHandProbabilityResult,
     calculate_final_hand_probabilities,
 )
+from poker_trainer.models.action_aware import ActionAwareResult, ActionAwareSettings
 from poker_trainer.models.equity import EquityResult
 from poker_trainer.models.game_state import GameState
 from poker_trainer.models.recommendation import PotOddsResult, Recommendation
@@ -35,6 +37,7 @@ class AnalysisResult:
     equity: EquityResult
     pot_odds: PotOddsResult
     recommendation: Recommendation
+    action_aware: ActionAwareResult | None = None
 
 
 def analyze_game_state(
@@ -44,6 +47,8 @@ def analyze_game_state(
     seed: int | None = None,
     progress_callback: ProgressCallback | None = None,
     cancel_callback: CancelCallback | None = None,
+    include_action_aware: bool = False,
+    action_aware_settings: ActionAwareSettings | None = None,
 ) -> AnalysisResult:
     """Run all currently implemented analysis systems for a game state."""
     current = analyze_current_hand(game_state)
@@ -63,6 +68,17 @@ def analyze_game_state(
         game_state.pot_size, game_state.amount_to_call, equity.total_equity
     )
     recommendation = recommend_action(game_state, equity, outs)
+    action_aware = (
+        calculate_action_aware_ev(
+            game_state,
+            settings=action_aware_settings,
+            seed=seed,
+            progress_callback=progress_callback,
+            cancel_callback=cancel_callback,
+        )
+        if include_action_aware
+        else None
+    )
     return AnalysisResult(
         game_state=game_state,
         current_hand=current,
@@ -73,4 +89,5 @@ def analyze_game_state(
         equity=equity,
         pot_odds=pot_odds,
         recommendation=recommendation,
+        action_aware=action_aware,
     )

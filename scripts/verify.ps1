@@ -43,6 +43,7 @@ try {
 
     $Smoke = Get-Content -Raw -LiteralPath $Report | ConvertFrom-Json
     if (-not $Smoke.analysis_complete) { throw "Packaged analysis did not complete." }
+    if (-not $Smoke.action_aware_complete) { throw "Packaged action-aware analysis did not complete." }
     if (-not $Smoke.resources_loaded) { throw "Packaged resources did not load." }
     if (-not (Test-Path -LiteralPath $Smoke.saved_hand)) { throw "Packaged save was not created." }
     if ($Smoke.user_data_dir.StartsWith((Join-Path $Root "dist"))) {

@@ -1,9 +1,10 @@
 """Validated Texas Hold'em game-state models."""
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 
+from poker_trainer.models.action_aware import TableState, create_default_table
 from poker_trainer.models.card import Card
 from poker_trainer.utils.exceptions import (
     DuplicateCardError,
@@ -73,6 +74,7 @@ class GameState:
     ante: float = 0.0
     previous_action: str | None = None
     requested_simulation_count: int = 25_000
+    table_state: TableState | None = None
 
     def __post_init__(self) -> None:
         """Normalize immutable card collections and validate the state."""
@@ -107,6 +109,22 @@ class GameState:
             raise InvalidBetError("Amount to call cannot exceed the hero stack.")
         if self.requested_simulation_count <= 0:
             raise InvalidGameStateError("Requested simulation count must be positive.")
+        table_state = self.table_state
+        if table_state is None:
+            table_state = create_default_table(
+                self.active_players,
+                self.hero_position.value,
+                self.street.value,
+                self.hero_stack,
+                self.effective_stack or self.hero_stack,
+            )
+            object.__setattr__(self, "table_state", table_state)
+        dealt_in_count = sum(1 for player in table_state.players if player.dealt_in)
+        if dealt_in_count != self.active_players:
+            raise InvalidGameStateError("Dealt-in table seats must match active players.")
+        if table_state.street != self.street.value:
+            table_state = replace(table_state, street=self.street.value)
+            object.__setattr__(self, "table_state", table_state)
 
     @property
     def street(self) -> Street:

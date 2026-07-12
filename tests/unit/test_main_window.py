@@ -1,13 +1,14 @@
 """Headless integration tests for the release desktop window."""
 
 from collections.abc import Iterator
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 import pytest
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from poker_trainer.models import Card, GameState, Position
+from poker_trainer.models import Card, GameState, OpponentProfile, Position
 from poker_trainer.services.settings_service import UserSettings
 from poker_trainer.ui import main_window as main_window_module
 from poker_trainer.ui.main_window import MainWindow
@@ -76,6 +77,10 @@ def test_background_analysis_completes_and_populates_results(
 
     assert window.latest_result is not None
     assert "Royal Flush" in window.output.toPlainText()
+    assert window.latest_result.action_aware is not None
+    assert "RAW SHOWDOWN ANALYSIS" in window.output.toPlainText()
+    assert "ACTION-AWARE ANALYSIS" in window.output.toPlainText()
+    assert window.action_table.rowCount() > 0
     assert window.export_button.isEnabled()
 
 
@@ -109,3 +114,49 @@ def test_theme_resources_and_empty_states_are_visible(window: MainWindow) -> Non
     window.new_hand()
     assert "Enter two hero cards" in window.output.toPlainText()
     assert window.window.minimumWidth() <= 900
+
+
+def test_table_controls_configure_profiles_folds_calls_and_players_behind(
+    window: MainWindow,
+) -> None:
+    window.position.setCurrentText(Position.SMALL_BLIND.display_name)
+    window.players_behind.setValue(3)
+    window.folded_seats.setText("3")
+    window.called_seats.setText("2")
+    window.aggressor_seat.setValue(4)
+    window.profile_combo.setCurrentIndex(
+        window.profile_combo.findData(OpponentProfile.LOOSE_AGGRESSIVE.value)
+    )
+
+    game_state = window._state()
+
+    assert game_state.table_state is not None
+    assert game_state.table_state.player(3).folded
+    assert "Called" in game_state.table_state.player(2).previous_actions
+    assert "Raised" in game_state.table_state.player(4).previous_actions
+    assert all(
+        player.profile is OpponentProfile.LOOSE_AGGRESSIVE
+        for player in game_state.table_state.active_opponents
+    )
+    assert "Behind hero" in window.action_order_label.text()
+
+
+def test_individual_opponent_override_and_last_to_act_details(window: MainWindow) -> None:
+    base = window._build_table_state("flop")
+    opponent = base.active_opponents[0]
+    window.player_overrides[opponent.seat] = replace(
+        opponent,
+        profile=OpponentProfile.NIT,
+        range_text="premium",
+        stack=50.0,
+    )
+    configured = window._state()
+    assert configured.table_state is not None
+    assert configured.table_state.player(opponent.seat).profile is OpponentProfile.NIT
+    assert configured.table_state.player(opponent.seat).stack == 50.0
+
+    window.position.setCurrentText(Position.BUTTON.display_name)
+    window.players_behind.setValue(0)
+    last_to_act = window._state()
+    assert last_to_act.table_state is not None
+    assert not last_to_act.table_state.players_after_hero()

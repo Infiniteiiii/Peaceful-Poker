@@ -8,6 +8,7 @@ RESOURCE_FILES = [
     RESOURCE_DIR / "dark.qss",
     RESOURCE_DIR / "default_settings.json",
     RESOURCE_DIR / "light.qss",
+    RESOURCE_DIR / "opponent_profiles.json",
     RESOURCE_DIR / "peaceful_poker.ico",
     RESOURCE_DIR / "peaceful_poker.png",
     RESOURCE_DIR / "peaceful_poker.svg",

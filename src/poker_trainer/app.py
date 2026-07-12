@@ -47,6 +47,7 @@ def run() -> int:
             result = main_window.latest_result
             payload: dict[str, object] = {
                 "analysis_complete": result is not None,
+                "action_aware_complete": result is not None and result.action_aware is not None,
                 "resources_loaded": all(
                     resource_path(name).exists()
                     for name in ("light.qss", "dark.qss", "peaceful_poker.ico")
@@ -66,6 +67,9 @@ def run() -> int:
                         "current_hand": result.current_hand.description,
                         "equity": result.equity.total_equity,
                         "recommendation": result.recommendation.primary_action,
+                        "action_aware_recommendation": (
+                            result.action_aware.recommended_action if result.action_aware else None
+                        ),
                     }
                 )
             report_path = Path(smoke_report)
