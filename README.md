@@ -204,7 +204,7 @@ Examples:
 - **Full house:** trip rank, then pair rank
 - **Four of a kind:** quad rank, then kicker
 
-The wheel \(A\text{-}2\text{-}3\text{-}4\text{-}5\) is assigned a high card of five, so it correctly loses to every six-high or better straight.
+The wheel `A-2-3-4-5` is assigned a high card of five, so it correctly loses to every six-high or better straight.
 
 ---
 
@@ -431,7 +431,7 @@ The familiar “rule of four and two” is only a mental approximation. Exact en
 
 Rather than counting only named outs, Peaceful Poker can evaluate the completed hand for every legal runout.
 
-Let \(\mathcal{B}\) be the set of legal future boards and let \(H(b)\) be the final hand category produced by runout \(b\). For category \(c\):
+Let $\mathcal{B}$ be the set of legal future boards and let \(H(b)\) be the final hand category produced by runout \(b\). For category \(c\):
 
 ```math
 P(H=c)
@@ -517,13 +517,13 @@ Exact enumeration visits every legal state in the selected state space.
 For a completed river board against one unrestricted opponent:
 
 1. Remove the hero's cards and board.
-2. Generate all \(\binom{45}{2}=990\) opponent holdings.
+2. Generate all $\binom{45}{2} = 990$ opponent holdings.
 3. Filter combinations excluded by the opponent range.
 4. Evaluate the hero and opponent.
 5. Record the hero's pot share.
 6. Average the shares.
 
-If the surviving range is \(\mathcal{R}\), unweighted exact equity is:
+If the surviving range is $\mathcal{R}$, unweighted exact equity is:
 
 ```math
 E
@@ -597,10 +597,10 @@ where:
 
 Before blockers:
 
-- A specific pocket pair has \(\binom{4}{2}=6\) combinations.
+- A specific pocket pair has $\binom{4}{2}=6$ combinations.
 - A specific suited non-pair hand has 4 combinations.
-- A specific offsuit non-pair hand has \(4 \times 3=12\) combinations.
-- A non-pair hand with no suit restriction has \(4 \times 4=16\) combinations.
+- A specific offsuit non-pair hand has $4 \times 3 = 12$ combinations.
+- A non-pair hand with no suit restriction has $4 \times 4 = 16$ combinations.
 
 For example:
 
@@ -616,7 +616,7 @@ For example:
 
 Known cards remove combinations from the range.
 
-If the hero holds \(A\spadesuit K\spadesuit\), the opponent cannot hold either card. The suited `AKs` combinations fall from four to three because \(A\spadesuit K\spadesuit\) is blocked.
+If the hero holds A♠ K♠, the opponent cannot hold either card. The suited `AKs` combinations fall from four to three because A♠ K♠ is blocked.
 
 Blockers affect more than the number of hands. They change the relative frequency of value hands, draws, and bluffs inside a surviving range. The engine therefore filters concrete combinations after removing all known cards rather than applying only a percentage adjustment.
 
@@ -1159,7 +1159,7 @@ This convention keeps previous contributions as sunk costs and allows every lega
 
 EV outcomes may vary much more than win indicators because one trial can win a small pot while another loses an entire effective stack.
 
-For returns \(R_1,\ldots,R_N\), the sample mean is:
+For returns $R_1,\ldots,R_N$, the sample mean is:
 
 ```math
 \overline{R}
@@ -1205,7 +1205,7 @@ A useful comparison quantity is the EV difference:
 EV(a)-EV(b).
 ```
 
-The sign of \(\Delta_{a,b}\) identifies the preferred action under the model, while its uncertainty indicates how stable that ranking is.
+The sign of $\Delta_{a,b}$ identifies the preferred action under the model, while its uncertainty indicates how stable that ranking is.
 
 ---
 
@@ -1233,7 +1233,7 @@ The hero currently has ace-high, plus:
 - two overcards against some holdings
 - combination-draw potential
 
-Any remaining spade completes an ace-high flush. Any jack completes \(A\text{-}K\text{-}Q\text{-}J\text{-}10\).
+Any remaining spade completes an ace-high flush. Any jack completes `A-K-Q-J-10`.
 
 The jack of spades belongs to both sets, so a naive count of \(9+4=13\) double counts it. The number of unique apparent outs is:
 
