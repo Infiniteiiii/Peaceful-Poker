@@ -1,4 +1,4 @@
-# Poker Decision Trainer
+# Peaceful Poker
 
 Educational No-Limit Texas Hold'em decision trainer.
 
@@ -36,6 +36,7 @@ python -m pytest
 
 ```powershell
 python -m poker_trainer
+peaceful-poker
 ```
 
 The current graphical shell is intentionally minimal and labelled as a

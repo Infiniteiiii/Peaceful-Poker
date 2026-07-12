@@ -1,4 +1,4 @@
-"""Poker Decision Trainer package."""
+"""ooker Decision Trainer package."""
 
 __all__ = ["__version__"]
 

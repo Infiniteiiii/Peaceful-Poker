@@ -16,11 +16,9 @@ def run() -> int:
 
     app = QApplication(sys.argv)
     window = QMainWindow()
-    window.setWindowTitle("Poker Decision Trainer")
+    window.setWindowTitle("Peaceful Poker")
 
-    label = QLabel(
-        "Poker Decision Trainer\n\nDevelopment build: card, deck, and hand evaluator stage."
-    )
+    label = QLabel("Peaceful Poker\n\nDevelopment build: card, deck, and hand evaluator stage.")
     label.setAlignment(Qt.AlignmentFlag.AlignCenter)
     label.setMinimumSize(640, 360)
 
