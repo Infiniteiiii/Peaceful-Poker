@@ -71,6 +71,13 @@ def test_all_in_call_edge() -> None:
     assert PlayerAction.RAISE not in actions
 
 
+def test_profitable_all_in_call_is_recommended_as_all_in() -> None:
+    recommendation = recommend_action(state(100.0, stack=100.0, pot=400.0), equity(0.60))
+
+    assert recommendation.primary_action == "All In"
+    assert recommendation.primary_action in recommendation.legal_alternatives
+
+
 def test_recommend_fold_when_below_required_equity() -> None:
     recommendation = recommend_action(state(50.0), equity(0.10))
 

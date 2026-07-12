@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "peaceful-poker"
-version = "0.1.0"
+version = "1.0.0"
 description = "Educational No-Limit Texas Hold'em decision trainer."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -20,12 +20,18 @@ dev = [
     "pytest-qt>=4.4",
     "ruff>=0.5",
 ]
+build = [
+    "pyinstaller>=6.11",
+]
 
 [project.scripts]
 peaceful-poker = "poker_trainer.main:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+poker_trainer = ["resources/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

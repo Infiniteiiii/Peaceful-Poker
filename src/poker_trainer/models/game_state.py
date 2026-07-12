@@ -104,7 +104,7 @@ class GameState:
         if self.small_blind > 0 and self.big_blind > 0 and self.small_blind > self.big_blind:
             raise InvalidBetError("Small blind cannot exceed the big blind.")
         if self.amount_to_call > self.hero_stack:
-            raise InvalidBetError("Amount to call cannot exceed the hero stack in this stage.")
+            raise InvalidBetError("Amount to call cannot exceed the hero stack.")
         if self.requested_simulation_count <= 0:
             raise InvalidGameStateError("Requested simulation count must be positive.")
 

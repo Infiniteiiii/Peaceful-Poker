@@ -5,14 +5,13 @@ from itertools import combinations
 from random import Random
 from time import perf_counter
 
-from poker_trainer.engine.hand_evaluator import evaluate_best_hand
+from poker_trainer.engine.hand_evaluator import HandScore, evaluate_hand_score
 from poker_trainer.engine.range_parser import CardCombo, available_combinations, filter_combinations
 from poker_trainer.models.card import Card
 from poker_trainer.models.deck import Deck
 from poker_trainer.models.equity import EquityResult, SimulationPreset
 from poker_trainer.models.game_state import GameState, Street
-from poker_trainer.models.hand import EvaluatedHand
-from poker_trainer.utils.exceptions import SimulationCancelledError
+from poker_trainer.utils.exceptions import InvalidGameStateError, SimulationCancelledError
 
 ProgressCallback = Callable[[int, int], None]
 CancelCallback = Callable[[], bool]
@@ -32,7 +31,12 @@ def calculate_equity(
 ) -> EquityResult:
     """Calculate hero showdown equity against valid opponent holdings."""
     count = simulation_count or game_state.requested_simulation_count or SimulationPreset.STANDARD
+    if count <= 0:
+        raise InvalidGameStateError("Simulation count must be positive.")
+    if exact_threshold < 0:
+        raise InvalidGameStateError("Exact calculation threshold cannot be negative.")
     known_hands = tuple(tuple(hand) for hand in known_opponent_hands)
+    _validate_known_opponents(game_state, known_hands)
     start = perf_counter()
     warnings: list[str] = []
     assumptions = [f"Opponent range assumption: {opponent_range}."]
@@ -86,6 +90,7 @@ def _calculate_exact(
     for step, runout in enumerate(board_runouts, start=1):
         _raise_if_cancelled(cancel_callback)
         board = (*game_state.community_cards, *runout)
+        hero_score = evaluate_hand_score((*game_state.hero_cards, *board))
         used_for_board = set(runout)
         available_after_board = tuple(card for card in remaining if card not in used_for_board)
         unknown_count = game_state.active_players - 1 - len(known_opponent_hands)
@@ -95,7 +100,7 @@ def _calculate_exact(
             opponent_range,
         ):
             all_opponents = (*known_opponent_hands, *opponent_hands)
-            share = _hero_pot_share(game_state.hero_cards, board, all_opponents)
+            share = _hero_pot_share(hero_score, board, all_opponents)
             wins, losses, ties = _record_share(share, wins, losses, ties)
             pot_share_total += share
             iterations += 1
@@ -131,14 +136,25 @@ def _calculate_monte_carlo(
         _raise_if_cancelled(cancel_callback)
         remaining = list(_remaining_deck(game_state, known_opponent_hands))
         opponent_hands = list(known_opponent_hands)
-        for _ in range(game_state.active_players - 1 - len(known_opponent_hands)):
-            combo = _pick_combo(remaining, opponent_range, rng)
-            opponent_hands.append(combo)
-            remaining.remove(combo[0])
-            remaining.remove(combo[1])
-        rng.shuffle(remaining)
+        unknown_count = game_state.active_players - 1 - len(known_opponent_hands)
+        if _is_random_range(opponent_range):
+            rng.shuffle(remaining)
+            opponent_cards = remaining[: unknown_count * 2]
+            opponent_hands.extend(
+                tuple(opponent_cards[index : index + 2])
+                for index in range(0, len(opponent_cards), 2)
+            )
+            del remaining[: unknown_count * 2]
+        else:
+            for _ in range(unknown_count):
+                combo = _pick_combo(remaining, opponent_range, rng)
+                opponent_hands.append(combo)
+                remaining.remove(combo[0])
+                remaining.remove(combo[1])
+            rng.shuffle(remaining)
         board = (*game_state.community_cards, *remaining[: 5 - len(game_state.community_cards)])
-        share = _hero_pot_share(game_state.hero_cards, board, tuple(opponent_hands))
+        hero_score = evaluate_hand_score((*game_state.hero_cards, *board))
+        share = _hero_pot_share(hero_score, board, tuple(opponent_hands))
         wins, losses, ties = _record_share(share, wins, losses, ties)
         pot_share_total += share
         if progress_callback is not None and (
@@ -211,20 +227,15 @@ def _pick_combo(available: list[Card], opponent_range: str, rng: Random) -> Card
 
 
 def _hero_pot_share(
-    hero_cards: Sequence[Card],
+    hero_score: HandScore,
     board: tuple[Card, ...],
     opponent_hands: tuple[tuple[Card, ...], ...],
 ) -> float:
-    hero_hand = evaluate_best_hand((*hero_cards, *board))
-    opponent_evals = tuple(evaluate_best_hand((*hand, *board)) for hand in opponent_hands)
-    all_hands = (hero_hand, *opponent_evals)
-    best = _best_hand(all_hands)
-    winners = sum(1 for hand in all_hands if hand.score == best.score)
-    return 1.0 / winners if hero_hand.score == best.score else 0.0
-
-
-def _best_hand(hands: tuple[EvaluatedHand, ...]) -> EvaluatedHand:
-    return max(hands, key=lambda hand: hand.score)
+    opponent_scores = tuple(evaluate_hand_score((*hand, *board)) for hand in opponent_hands)
+    all_scores = (hero_score, *opponent_scores)
+    best = max(all_scores)
+    winners = sum(1 for score in all_scores if score == best)
+    return 1.0 / winners if hero_score == best else 0.0
 
 
 def _record_share(share: float, wins: int, losses: int, ties: int) -> tuple[int, int, int]:
@@ -294,6 +305,24 @@ def _estimate_exact_outcomes(
 def _raise_if_cancelled(cancel_callback: CancelCallback | None) -> None:
     if cancel_callback is not None and cancel_callback():
         raise SimulationCancelledError("Equity calculation was cancelled.")
+
+
+def _validate_known_opponents(
+    game_state: GameState, known_opponent_hands: tuple[tuple[Card, ...], ...]
+) -> None:
+    if len(known_opponent_hands) > game_state.active_players - 1:
+        raise InvalidGameStateError("Known opponent hands exceed the active opponent count.")
+    if any(len(hand) != 2 for hand in known_opponent_hands):
+        raise InvalidGameStateError("Every known opponent hand must contain exactly two cards.")
+    known_cards = [*game_state.known_cards]
+    for hand in known_opponent_hands:
+        known_cards.extend(hand)
+    if len(set(known_cards)) != len(known_cards):
+        raise InvalidGameStateError("Known hero, board, and opponent cards cannot overlap.")
+
+
+def _is_random_range(opponent_range: str) -> bool:
+    return opponent_range.strip().lower() in {"", "random", "any two"}
 
 
 def _with_extra_warnings(result: EquityResult, warnings: tuple[str, ...]) -> EquityResult:

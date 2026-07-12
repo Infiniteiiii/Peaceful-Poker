@@ -2,11 +2,14 @@
 
 from collections import Counter
 from collections.abc import Iterable
+from functools import lru_cache
 from itertools import combinations
 
 from poker_trainer.models.card import Card, Rank
 from poker_trainer.models.hand import EvaluatedHand, HandCategory
 from poker_trainer.utils.exceptions import DuplicateCardError, InvalidHandError
+
+HandScore = tuple[int, tuple[int, ...]]
 
 
 def evaluate_best_hand(cards: Iterable[Card]) -> EvaluatedHand:
@@ -19,12 +22,78 @@ def evaluate_best_hand(cards: Iterable[Card]) -> EvaluatedHand:
     return max(evaluate_five_card_hand(combo) for combo in combinations(card_tuple, 5))
 
 
+def evaluate_hand_score(cards: Iterable[Card]) -> HandScore:
+    """Return a fast comparable score for five through seven cards."""
+    card_tuple = tuple(cards)
+    _validate_unique_cards(card_tuple)
+    if not 5 <= len(card_tuple) <= 7:
+        raise InvalidHandError("Hand scoring requires between five and seven cards.")
+
+    rank_counts = Counter(card.rank_value for card in card_tuple)
+    suit_ranks: dict[object, list[int]] = {}
+    for card in card_tuple:
+        suit_ranks.setdefault(card.suit, []).append(card.rank_value)
+
+    for ranks in suit_ranks.values():
+        if len(ranks) >= 5:
+            straight_flush_high = _straight_high_from_values(set(ranks))
+            if straight_flush_high is not None:
+                return (int(HandCategory.STRAIGHT_FLUSH), (straight_flush_high,))
+
+    quads = sorted((rank for rank, count in rank_counts.items() if count == 4), reverse=True)
+    if quads:
+        quad = quads[0]
+        kicker = max(rank for rank in rank_counts if rank != quad)
+        return (int(HandCategory.FOUR_OF_A_KIND), (quad, kicker))
+
+    trips = sorted((rank for rank, count in rank_counts.items() if count >= 3), reverse=True)
+    if trips:
+        pair_candidates = sorted(
+            (rank for rank, count in rank_counts.items() if count >= 2 and rank != trips[0]),
+            reverse=True,
+        )
+        if pair_candidates:
+            return (int(HandCategory.FULL_HOUSE), (trips[0], pair_candidates[0]))
+
+    flushes = [sorted(ranks, reverse=True)[:5] for ranks in suit_ranks.values() if len(ranks) >= 5]
+    if flushes:
+        return (int(HandCategory.FLUSH), tuple(max(flushes)))
+
+    straight_high = _straight_high_from_values(set(rank_counts))
+    if straight_high is not None:
+        return (int(HandCategory.STRAIGHT), (straight_high,))
+
+    if trips:
+        trip = trips[0]
+        kickers = sorted((rank for rank in rank_counts if rank != trip), reverse=True)[:2]
+        return (int(HandCategory.THREE_OF_A_KIND), (trip, *kickers))
+
+    pairs = sorted((rank for rank, count in rank_counts.items() if count >= 2), reverse=True)
+    if len(pairs) >= 2:
+        high_pair, low_pair = pairs[:2]
+        kicker = max(rank for rank in rank_counts if rank not in {high_pair, low_pair})
+        return (int(HandCategory.TWO_PAIR), (high_pair, low_pair, kicker))
+    if pairs:
+        pair = pairs[0]
+        kickers = sorted((rank for rank in rank_counts if rank != pair), reverse=True)[:3]
+        return (int(HandCategory.PAIR), (pair, *kickers))
+    high_cards = tuple(sorted(rank_counts, reverse=True)[:5])
+    return (int(HandCategory.HIGH_CARD), high_cards)
+
+
 def evaluate_five_card_hand(cards: Iterable[Card]) -> EvaluatedHand:
     """Evaluate exactly five cards."""
     card_tuple = tuple(cards)
     _validate_unique_cards(card_tuple)
     if len(card_tuple) != 5:
         raise InvalidHandError("Five-card evaluation requires exactly five cards.")
+    normalized = tuple(sorted(card_tuple, key=lambda card: card.code))
+    return _evaluate_five_card_hand_cached(normalized)
+
+
+@lru_cache(maxsize=32_768)
+def _evaluate_five_card_hand_cached(card_tuple: tuple[Card, ...]) -> EvaluatedHand:
+    """Evaluate normalized cards while reusing board-heavy simulation work."""
 
     rank_counts = Counter(card.rank_value for card in card_tuple)
     ranks_desc = tuple(sorted(rank_counts, reverse=True))
@@ -123,7 +192,11 @@ def _validate_unique_cards(cards: tuple[Card, ...]) -> None:
 
 
 def _straight_high(rank_counts: Counter[int]) -> int | None:
-    unique = set(rank_counts)
+    return _straight_high_from_values(set(rank_counts))
+
+
+def _straight_high_from_values(values: set[int]) -> int | None:
+    unique = set(values)
     if Rank.ACE in unique:
         unique.add(1)
 

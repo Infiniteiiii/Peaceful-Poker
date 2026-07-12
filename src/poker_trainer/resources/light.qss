@@ -1,0 +1,47 @@
+QWidget {
+    background: #f7f8fa;
+    color: #20242a;
+}
+QGroupBox {
+    border: 1px solid #c9ced6;
+    border-radius: 6px;
+    margin-top: 10px;
+    padding-top: 8px;
+    font-weight: 600;
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 8px;
+    padding: 0 4px;
+}
+QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QTextEdit, QTableWidget {
+    background: #ffffff;
+    border: 1px solid #aeb5bf;
+    border-radius: 4px;
+    padding: 4px;
+    selection-background-color: #176b5b;
+    selection-color: #ffffff;
+}
+QPushButton {
+    background: #ffffff;
+    border: 1px solid #9fa7b2;
+    border-radius: 4px;
+    padding: 6px 10px;
+}
+QPushButton:hover { background: #e9eeec; }
+QPushButton:pressed { background: #d9e2df; }
+QPushButton:disabled { color: #777e87; background: #e7e9ec; }
+QPushButton#primaryButton {
+    background: #176b5b;
+    color: #ffffff;
+    border-color: #125447;
+    font-weight: 600;
+}
+QProgressBar {
+    border: 1px solid #aeb5bf;
+    border-radius: 4px;
+    text-align: center;
+    background: #ffffff;
+}
+QProgressBar::chunk { background: #218b76; }
+QTabBar::tab { padding: 7px 12px; }

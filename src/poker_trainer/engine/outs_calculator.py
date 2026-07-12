@@ -32,6 +32,6 @@ def calculate_outs(game_state: GameState) -> OutsResult:
         clean_outs=(),
         limitation=(
             "These are apparent unique outs. Clean and dirty outs require opponent-range analysis, "
-            "which is intentionally outside this stage."
+            "which is not part of the outs calculation."
         ),
     )

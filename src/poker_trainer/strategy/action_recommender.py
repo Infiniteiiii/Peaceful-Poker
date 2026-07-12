@@ -1,11 +1,15 @@
 """Transparent educational recommendation rules."""
 
+import json
 from dataclasses import dataclass
+from functools import lru_cache
+from typing import Any
 
 from poker_trainer.engine.outs_calculator import OutsResult
 from poker_trainer.models.equity import EquityResult
 from poker_trainer.models.game_state import GameState
 from poker_trainer.models.recommendation import ConfidenceLevel, Recommendation
+from poker_trainer.resource_path import resource_path
 from poker_trainer.strategy.legal_actions import PlayerAction, legal_actions
 from poker_trainer.strategy.pot_odds import calculate_pot_odds
 
@@ -25,6 +29,22 @@ class RecommendationThresholds:
     large_bet_fraction: float = 0.85
 
 
+@lru_cache(maxsize=1)
+def load_recommendation_thresholds() -> RecommendationThresholds:
+    """Load packaged recommendation thresholds with safe built-in defaults."""
+    try:
+        payload: Any = json.loads(
+            resource_path("recommendation_thresholds.json").read_text(encoding="utf-8")
+        )
+    except (OSError, json.JSONDecodeError):
+        return RecommendationThresholds()
+    if not isinstance(payload, dict):
+        return RecommendationThresholds()
+    names = set(RecommendationThresholds.__dataclass_fields__)
+    values = {key: float(value) for key, value in payload.items() if key in names}
+    return RecommendationThresholds(**values)
+
+
 def recommend_action(
     game_state: GameState,
     equity_result: EquityResult | None,
@@ -32,7 +52,7 @@ def recommend_action(
     thresholds: RecommendationThresholds | None = None,
 ) -> Recommendation:
     """Return a qualified rule-based recommendation using only legal actions."""
-    values = thresholds or RecommendationThresholds()
+    values = thresholds or load_recommendation_thresholds()
     legal = legal_actions(game_state)
     legal_labels = tuple(action.display_name for action in legal)
     assumptions = ("This is an educational rule-based recommendation, not a GTO solution.",)
@@ -90,7 +110,11 @@ def recommend_action(
                 "Equity is comfortably above the call threshold and strong enough to raise."
             )
         else:
-            action = PlayerAction.CALL if PlayerAction.CALL in legal else PlayerAction.ALL_IN
+            action = (
+                PlayerAction.ALL_IN
+                if game_state.hero_stack == game_state.amount_to_call
+                else PlayerAction.CALL
+            )
             size = (
                 game_state.amount_to_call if action is PlayerAction.CALL else game_state.hero_stack
             )

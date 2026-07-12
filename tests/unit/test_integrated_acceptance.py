@@ -1,10 +1,12 @@
 """Integrated acceptance scenario for the Peaceful Poker analyzer."""
 
+from dataclasses import replace
 from pathlib import Path
 
 from poker_trainer.engine.draw_detector import DrawType
 from poker_trainer.models import Card, GameState, Position
 from poker_trainer.services.analysis_service import analyze_game_state
+from poker_trainer.services.export_service import export_analysis_json, export_analysis_markdown
 from poker_trainer.services.storage_service import SavedHand, load_hand, save_hand
 
 
@@ -43,3 +45,15 @@ def test_specified_analyzer_scenario_round_trip(tmp_path: Path) -> None:
 
     assert loaded.game_state.hero_cards == game_state.hero_cards
     assert loaded.game_state.community_cards == game_state.community_cards
+
+    turn_state = replace(game_state, community_cards=cards("QS 10D 4S 2C"))
+    turn_result = analyze_game_state(turn_state, simulation_count=200, seed=7)
+    river_state = replace(game_state, community_cards=cards("QS 10D 4S 2C 3S"))
+    river_result = analyze_game_state(river_state, simulation_count=200, seed=7)
+    markdown = export_analysis_markdown(river_result, tmp_path / "analysis.md")
+    json_report = export_analysis_json(river_result, tmp_path / "analysis.json")
+
+    assert turn_result.current_hand.evaluated_hand is not None
+    assert river_result.current_hand.evaluated_hand is not None
+    assert markdown.exists()
+    assert json_report.exists()

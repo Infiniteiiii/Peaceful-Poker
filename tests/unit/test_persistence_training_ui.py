@@ -94,6 +94,14 @@ def test_settings_persistence(tmp_path: Path) -> None:
     assert load_settings(path).default_player_count == 9
 
 
+def test_invalid_settings_are_rejected(tmp_path: Path) -> None:
+    path = tmp_path / "settings.json"
+    path.write_text('{"theme": "invisible"}', encoding="utf-8")
+
+    with pytest.raises(StorageError):
+        load_settings(path)
+
+
 def test_export_contents(tmp_path: Path) -> None:
     result = analyze_game_state(state(), simulation_count=100, seed=1)
     markdown = export_analysis_markdown(result, tmp_path / "analysis.md")

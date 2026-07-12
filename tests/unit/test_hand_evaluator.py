@@ -1,9 +1,11 @@
 """Tests for five-card and seven-card poker evaluation."""
 
+from random import Random
+
 import pytest
 
-from poker_trainer.engine import evaluate_best_hand, evaluate_five_card_hand
-from poker_trainer.models import Card, HandCategory
+from poker_trainer.engine import evaluate_best_hand, evaluate_five_card_hand, evaluate_hand_score
+from poker_trainer.models import Card, Deck, HandCategory
 from poker_trainer.utils.exceptions import DuplicateCardError, InvalidHandError
 
 
@@ -99,3 +101,13 @@ def test_duplicate_cards_are_rejected() -> None:
 def test_best_hand_requires_five_to_seven_cards() -> None:
     with pytest.raises(InvalidHandError):
         evaluate_best_hand(cards("AS KD QH JC"))
+
+
+@pytest.mark.parametrize("card_count", [5, 6, 7])
+def test_fast_score_matches_best_five_evaluator(card_count: int) -> None:
+    rng = Random(20260711 + card_count)
+    deck = Deck.standard().cards
+
+    for _ in range(500):
+        sample = rng.sample(deck, card_count)
+        assert evaluate_hand_score(sample) == evaluate_best_hand(sample).score

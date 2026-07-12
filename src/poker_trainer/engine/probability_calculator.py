@@ -4,7 +4,7 @@ from collections import Counter
 from dataclasses import dataclass
 from itertools import combinations
 
-from poker_trainer.engine.hand_evaluator import evaluate_best_hand
+from poker_trainer.engine.hand_evaluator import evaluate_best_hand, evaluate_hand_score
 from poker_trainer.models.card import Card
 from poker_trainer.models.deck import Deck
 from poker_trainer.models.game_state import GameState, Street
@@ -47,9 +47,11 @@ def calculate_final_hand_probabilities(game_state: GameState) -> FinalHandProbab
     improvements = 0
     for runout in runouts:
         final_board = (*game_state.community_cards, *runout)
-        final_hand = evaluate_best_hand((*game_state.hero_cards, *final_board))
-        counts[final_hand.category] += 1
-        if final_hand.category > current_category:
+        final_category = HandCategory(
+            evaluate_hand_score((*game_state.hero_cards, *final_board))[0]
+        )
+        counts[final_category] += 1
+        if final_category > current_category:
             improvements += 1
 
     total = sum(counts.values())
@@ -86,8 +88,7 @@ def _preflop_deferred_result() -> FinalHandProbabilityResult:
         runouts_examined=0,
         calculation_method="preflop_exact_enumeration_deferred",
         warnings=(
-            "Full preflop exact five-card board enumeration is intentionally deferred "
-            "in this stage.",
+            "Full preflop exact five-card board enumeration is too large for interactive analysis.",
         ),
     )
 

@@ -32,6 +32,21 @@ def generate_scenario(
     seed: int | None = None,
 ) -> TrainingScenario:
     """Generate a deterministic valid training scenario from a small curated set."""
+    state = generate_training_state(difficulty, seed)
+    analysis = analyze_game_state(state, simulation_count=1_000, seed=seed)
+    return TrainingScenario(
+        difficulty=difficulty,
+        game_state=state,
+        legal_action_labels=analysis.recommendation.legal_alternatives,
+        analysis=analysis,
+    )
+
+
+def generate_training_state(
+    difficulty: TrainingDifficulty = TrainingDifficulty.BEGINNER,
+    seed: int | None = None,
+) -> GameState:
+    """Generate a valid scenario state without running a potentially slow analysis."""
     rng = Random(seed)
     scenarios = {
         TrainingDifficulty.BEGINNER: [
@@ -61,13 +76,7 @@ def generate_scenario(
         big_blind=10.0,
         requested_simulation_count=5_000,
     )
-    analysis = analyze_game_state(state, simulation_count=1_000, seed=seed)
-    return TrainingScenario(
-        difficulty=difficulty,
-        game_state=state,
-        legal_action_labels=analysis.recommendation.legal_alternatives,
-        analysis=analysis,
-    )
+    return state
 
 
 def _cards(codes: str) -> tuple[Card, ...]:

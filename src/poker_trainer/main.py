@@ -1,4 +1,4 @@
-"""Command-line entry point for the desktop application shell."""
+"""Command-line entry point for the Peaceful Poker desktop application."""
 
 from poker_trainer.app import run
 

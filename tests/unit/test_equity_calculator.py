@@ -5,7 +5,11 @@ import pytest
 from poker_trainer.engine.equity_calculator import calculate_equity
 from poker_trainer.engine.range_parser import available_combinations, filter_combinations
 from poker_trainer.models import Card, GameState, Position
-from poker_trainer.utils.exceptions import SimulationCancelledError, UnsupportedRangeError
+from poker_trainer.utils.exceptions import (
+    InvalidGameStateError,
+    SimulationCancelledError,
+    UnsupportedRangeError,
+)
 
 
 def cards(codes: str) -> tuple[Card, ...]:
@@ -64,6 +68,15 @@ def test_multiway_fractional_split() -> None:
     assert result.pot_share_total == pytest.approx(1 / 3)
 
 
+def test_equity_percentages_partition_every_outcome() -> None:
+    result = calculate_equity(state("AS KS", "QS 10D 4S", players=6), simulation_count=300, seed=17)
+
+    assert result.win_percentage + result.tie_percentage + result.loss_percentage == pytest.approx(
+        1.0
+    )
+    assert result.total_equity == pytest.approx(result.pot_share_total / result.iterations)
+
+
 def test_exact_river_random_opponent_excludes_known_cards() -> None:
     result = calculate_equity(state("AS KS", "QS JS 10S 2D 3C"))
 
@@ -101,6 +114,22 @@ def test_cancellation_raises() -> None:
             simulation_count=100,
             cancel_callback=lambda: True,
         )
+
+
+@pytest.mark.parametrize(
+    "known_hands",
+    [
+        (cards("9H"),),
+        (cards("9H 9C"), cards("8H 8C")),
+        (cards("AS 9C"),),
+        (cards("9H 9C"), cards("9H 8C")),
+    ],
+)
+def test_invalid_known_opponent_hands_are_rejected(
+    known_hands: tuple[tuple[Card, ...], ...],
+) -> None:
+    with pytest.raises(InvalidGameStateError):
+        calculate_equity(state("AS KS", "QS JS 10S 2D 3C"), known_opponent_hands=known_hands)
 
 
 def test_invalid_range_rejected() -> None:

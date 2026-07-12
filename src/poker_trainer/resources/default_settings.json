@@ -1,0 +1,10 @@
+{
+  "theme": "light",
+  "automatic_analysis": false,
+  "default_player_count": 6,
+  "default_simulation_count": 25000,
+  "percentage_precision": 1,
+  "detailed_explanations": true,
+  "small_blind": 1.0,
+  "big_blind": 2.0
+}

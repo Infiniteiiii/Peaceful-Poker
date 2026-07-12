@@ -1,5 +1,6 @@
 """Qt workers for background analysis."""
 
+from threading import Event
 from typing import Any
 
 from poker_trainer.models.game_state import GameState
@@ -27,7 +28,7 @@ class AnalysisWorker:  # pragma: no cover - exercised through UI smoke tests
 
             def __init__(self) -> None:
                 super().__init__()
-                self.cancelled = False
+                self.cancelled = Event()
 
             def run(self) -> None:
                 try:
@@ -37,7 +38,7 @@ class AnalysisWorker:  # pragma: no cover - exercised through UI smoke tests
                         simulation_count=simulation_count,
                         seed=seed,
                         progress_callback=self.progress.emit,
-                        cancel_callback=lambda: self.cancelled,
+                        cancel_callback=self.cancelled.is_set,
                     )
                 except Exception as exc:  # noqa: BLE001 - user-facing worker boundary
                     self.error.emit(str(exc))
@@ -45,6 +46,6 @@ class AnalysisWorker:  # pragma: no cover - exercised through UI smoke tests
                 self.finished.emit(result)
 
             def cancel(self) -> None:
-                self.cancelled = True
+                self.cancelled.set()
 
         self.object = _Worker()

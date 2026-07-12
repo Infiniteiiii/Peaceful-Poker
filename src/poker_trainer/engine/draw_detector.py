@@ -41,7 +41,8 @@ class Draw:
 
 
 _DIRTY_OUT_WARNING = (
-    "Outs are apparent, not guaranteed clean, because opponent ranges are not modeled yet."
+    "Outs are apparent, not guaranteed clean, because draw cleanliness does not evaluate "
+    "the selected opponent range."
 )
 
 
