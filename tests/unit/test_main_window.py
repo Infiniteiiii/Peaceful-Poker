@@ -29,23 +29,30 @@ def enter_default_cards(window: MainWindow) -> None:
 
 
 @pytest.fixture
-def window(qtbot: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[MainWindow]:
+def window(
+    qapp: Any,
+    qtbot: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> Iterator[MainWindow]:
     monkeypatch.setattr(main_window_module, "load_settings", lambda: UserSettings())
     monkeypatch.setattr(main_window_module, "save_settings", lambda _settings: tmp_path)
+    assert QtWidgets.QApplication.instance() is qapp
     result = MainWindow(QtWidgets, QtCore, QtGui)
     qtbot.addWidget(result.window)
     result.show()
     enter_default_cards(result)
     yield result
-    if result.worker is not None:
+    if result.thread is not None and result.thread.isRunning() and result.worker is not None:
         result.worker.cancel()
     if result.thread is not None:
         qtbot.waitUntil(lambda: result.thread is None, timeout=15_000)
     result.window.close()
+    qtbot.waitUntil(lambda: not result.window.isVisible(), timeout=2_000)
 
 
 def test_startup_remains_visible_idle_and_empty(
-    qtbot: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    qapp: Any, qtbot: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setattr(
         main_window_module,
@@ -57,8 +64,8 @@ def test_startup_remains_visible_idle_and_empty(
     qtbot.addWidget(result.window)
     result.show()
     result._schedule_automatic_analysis()
-    qtbot.wait(750)
 
+    assert QtWidgets.QApplication.instance() is qapp
     assert result.window.isVisible()
     assert all(not edit.text() for edit in result.card_edits)
     assert result.thread is None
@@ -66,6 +73,34 @@ def test_startup_remains_visible_idle_and_empty(
     assert not result._auto_timer.isActive()
 
     result.window.close()
+
+
+def test_repeated_window_creation_and_close_uses_one_application(
+    qapp: Any,
+    qtbot: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(main_window_module, "load_settings", lambda: UserSettings())
+    monkeypatch.setattr(main_window_module, "save_settings", lambda _settings: tmp_path)
+
+    for _ in range(8):
+        result = MainWindow(QtWidgets, QtCore, QtGui)
+        qtbot.addWidget(result.window)
+        result.show()
+        qtbot.waitUntil(result.window.isVisible, timeout=2_000)
+        assert QtWidgets.QApplication.instance() is qapp
+        assert result.thread is None
+
+        concrete_window = result.window
+        concrete_window.close()
+        qtbot.waitUntil(
+            lambda window=concrete_window: not window.isVisible(),
+            timeout=2_000,
+        )
+
+    assert QtWidgets.QApplication.instance() is qapp
+    assert not qapp.closingDown()
 
 
 def test_card_entry_rejects_incomplete_board_and_duplicates(window: MainWindow) -> None:
@@ -96,7 +131,7 @@ def test_clear_street_removes_only_latest_street(window: MainWindow) -> None:
 
 
 def test_background_analysis_completes_and_populates_results(
-    window: MainWindow, qtbot: Any
+    window: MainWindow, qapp: Any, qtbot: Any
 ) -> None:
     state = GameState(
         active_players=2,
@@ -119,11 +154,12 @@ def test_background_analysis_completes_and_populates_results(
     assert window.window.isVisible()
     assert window.thread is None
     assert window.worker is None
-    assert not QtWidgets.QApplication.closingDown()
+    assert QtWidgets.QApplication.instance() is qapp
+    assert not qapp.closingDown()
 
 
 def test_failed_analysis_displays_error_and_leaves_window_open(
-    window: MainWindow, qtbot: Any, monkeypatch: pytest.MonkeyPatch
+    window: MainWindow, qapp: Any, qtbot: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     class FailingAnalysisWorker:
         def __init__(self, qtcore: Any, *_args: object, **_kwargs: object) -> None:
@@ -147,7 +183,8 @@ def test_failed_analysis_displays_error_and_leaves_window_open(
 
     assert "forced analysis failure" in window.output.toPlainText()
     assert window.window.isVisible()
-    assert not QtWidgets.QApplication.closingDown()
+    assert QtWidgets.QApplication.instance() is qapp
+    assert not qapp.closingDown()
 
 
 def test_input_change_prevents_stale_worker_result(window: MainWindow, qtbot: Any) -> None:
@@ -163,9 +200,13 @@ def test_input_change_prevents_stale_worker_result(window: MainWindow, qtbot: An
     assert "Inputs changed" in window.output.toPlainText()
     assert window.window.isVisible()
     assert not window.close_pending
+    assert window.thread is None
+    assert window.worker is None
 
 
-def test_close_during_analysis_cancels_then_closes(window: MainWindow, qtbot: Any) -> None:
+def test_close_during_analysis_cancels_then_closes(
+    window: MainWindow, qapp: Any, qtbot: Any
+) -> None:
     window.players.setValue(10)
     window.preset_combo.setCurrentText("Very Accurate")
     window.analyze()
@@ -174,6 +215,10 @@ def test_close_during_analysis_cancels_then_closes(window: MainWindow, qtbot: An
     window.window.close()
     qtbot.waitUntil(lambda: window.thread is None, timeout=15_000)
     qtbot.waitUntil(lambda: not window.window.isVisible(), timeout=2_000)
+
+    assert window.worker is None
+    assert QtWidgets.QApplication.instance() is qapp
+    assert not qapp.closingDown()
 
 
 def test_theme_resources_and_empty_states_are_visible(window: MainWindow) -> None:

@@ -552,7 +552,9 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
         self.progress.setFormat("Preparing analysis...")
         self.status_label.setText("Analysis is running. You may cancel or continue editing inputs.")
         self._sync_button_states(running=True)
-        thread = self.qtcore.QThread(self.window)
+        # The thread is deliberately parentless. Its deferred deletion must finish before the
+        # window can be destroyed, rather than being forced by QObject parent teardown.
+        thread = self.qtcore.QThread()
         factory = AnalysisWorker(
             self.qtcore,
             state,
@@ -584,6 +586,10 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
             def thread_finished(self) -> None:
                 owner._thread_finished(thread)
 
+            @qtcore.Slot()  # type: ignore[untyped-decorator]
+            def thread_destroyed(self) -> None:
+                owner._thread_destroyed(thread)
+
         bridge = _SignalBridge(self.window)
         self.signal_bridge = bridge
         worker.moveToThread(thread)
@@ -597,6 +603,7 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
         worker.error.connect(worker.deleteLater)
         thread.finished.connect(bridge.thread_finished)
         thread.finished.connect(thread.deleteLater)
+        thread.destroyed.connect(bridge.thread_destroyed)
         thread.start()
 
     def cancel(self) -> None:
@@ -641,11 +648,6 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
 
     def _thread_finished(self, active_thread: Any) -> None:
         if active_thread is self.thread:
-            self.thread = None
-            self.worker = None
-            if self.signal_bridge is not None:
-                self.signal_bridge.deleteLater()
-                self.signal_bridge = None
             self.progress.setRange(0, 1)
             if self.latest_result is not None:
                 self.progress.setValue(1)
@@ -656,6 +658,17 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
             else:
                 self.progress.setValue(0)
                 self.progress.setFormat("Ready")
+        self._sync_button_states()
+
+    def _thread_destroyed(self, active_thread: Any) -> None:
+        """Release Qt references only after deferred QThread destruction completes."""
+        if active_thread is not self.thread:
+            return
+        self.thread = None
+        self.worker = None
+        if self.signal_bridge is not None:
+            self.signal_bridge.deleteLater()
+            self.signal_bridge = None
         self._sync_button_states()
         if self.close_pending:
             self.qtcore.QTimer.singleShot(0, self.window.close)
@@ -1194,9 +1207,12 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
             self.startup_warning = "Saved window geometry was invalid and has been reset."
 
     def _close_event(self, event: Any) -> None:
-        if self.thread is not None and self.thread.isRunning():
-            if self.worker is not None:
-                self.worker.cancel()
+        if self.thread is not None:
+            if self.thread.isRunning():
+                if self.worker is not None:
+                    self.worker.cancel()
+                self.thread.requestInterruption()
+                self.thread.quit()
             self.close_pending = True
             self.status_label.setText("Cancelling analysis before closing...")
             event.ignore()

@@ -3,10 +3,11 @@
 import json
 from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 import pytest
+from PySide6 import QtCore, QtGui, QtWidgets
 
-from poker_trainer.app import run
 from poker_trainer.models import Card, GameState, OpponentProfile, Position
 from poker_trainer.services.analysis_service import analyze_game_state
 from poker_trainer.services.export_service import export_analysis_json, export_analysis_markdown
@@ -18,6 +19,8 @@ from poker_trainer.training.training_service import (
     generate_scenario,
     generate_training_state,
 )
+from poker_trainer.ui import main_window as main_window_module
+from poker_trainer.ui.main_window import MainWindow
 from poker_trainer.utils.exceptions import (
     DuplicateCardError,
     StorageError,
@@ -232,9 +235,24 @@ def test_smoke_behavior_requires_explicit_flag(monkeypatch: pytest.MonkeyPatch) 
     assert not smoke_test_enabled()
 
 
-def test_application_startup_smoke(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
-    monkeypatch.setenv("PEACEFUL_POKER_SMOKE_TEST", "1")
-    monkeypatch.setenv("PEACEFUL_POKER_AUTOCLOSE_MS", "10")
+def test_application_startup_smoke(
+    qapp: Any,
+    qtbot: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(main_window_module, "load_settings", lambda: UserSettings())
+    monkeypatch.setattr(main_window_module, "save_settings", lambda _settings: tmp_path)
+    window = MainWindow(QtWidgets, QtCore, QtGui)
+    qtbot.addWidget(window.window)
+    window.show()
+    qtbot.waitUntil(window.window.isVisible, timeout=2_000)
 
-    assert run() == 0
+    assert QtWidgets.QApplication.instance() is qapp
+    assert window.thread is None
+
+    window.window.close()
+    qtbot.waitUntil(
+        lambda: not window.window.isVisible(),
+        timeout=2_000,
+    )
