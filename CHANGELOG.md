@@ -2,6 +2,21 @@
 
 All notable release changes are documented here.
 
+## 1.1.0 - 2026-07-12
+
+- Added explicit two-to-ten-seat table state, heads-up blind rules, clockwise street order,
+  folded/all-in skipping, players-behind tracking, and action reopening after raises.
+- Added nine readable opponent behavior profiles with range, hand-strength, bet-size, position,
+  stack-depth, board-texture, and prior-aggression inputs.
+- Added bounded action-aware Monte Carlo evaluation of every legal hero action and practical size,
+  reporting net EV, confidence intervals, folds, continuations, raises, showdown frequency,
+  conditional equity, final pot, and new investment.
+- Preserved raw all-showdown equity as a separate result and clarified equity versus expected value.
+- Added table controls, a per-seat editor, live action order, EV results, action-aware training,
+  schema 1 migration, and schema 2 seat persistence.
+- Added deterministic action-order, policy, EV-accounting, migration, UI, reproducibility,
+  cancellation, and players-behind tests plus focused policy benchmarks.
+
 ## 1.0.0 - 2026-07-11
 
 - Completed the custom Hold'em evaluator, draw/outs analysis, exact final-hand probabilities,

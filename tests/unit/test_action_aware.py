@@ -1,14 +1,17 @@
 """Deterministic tests for action order, opponent policy, and action-aware EV."""
 
 from dataclasses import replace
+from math import sqrt
 
 import pytest
 
 from poker_trainer.engine.action_aware_simulator import calculate_action_aware_ev
 from poker_trainer.engine.board_analyzer import analyze_board
 from poker_trainer.engine.candidate_actions import generate_candidate_actions
+from poker_trainer.engine.equity_calculator import calculate_equity
 from poker_trainer.engine.opponent_policy import (
     PolicyContext,
+    legal_opponent_actions,
     load_opponent_profiles,
     opponent_action_distribution,
 )
@@ -25,6 +28,7 @@ from poker_trainer.models import (
     TableState,
     create_default_table,
 )
+from poker_trainer.utils.exceptions import SimulationCancelledError
 
 
 def cards(codes: str) -> tuple[Card, ...]:
@@ -185,7 +189,7 @@ def test_loose_profiles_continue_and_aggressive_profiles_raise_more() -> None:
 
 
 def _forced_policy(
-    _player: TablePlayer,
+    player: TablePlayer,
     _hole: tuple[Card, Card],
     _board: tuple[Card, ...],
     policy_context: PolicyContext,
@@ -195,7 +199,13 @@ def _forced_policy(
     if policy_context.amount_to_call <= 0:
         action = OpponentAction.CHECK
     else:
-        action = OpponentAction.FOLD if fold else OpponentAction.CALL
+        action = (
+            OpponentAction.FOLD
+            if fold
+            else OpponentAction.ALL_IN
+            if player.stack <= policy_context.amount_to_call
+            else OpponentAction.CALL
+        )
     return ActionDistribution(probabilities={action: 1.0}, explanation=("test policy",))
 
 
@@ -215,6 +225,24 @@ def force_call(
     policy_context: PolicyContext,
 ) -> ActionDistribution:
     return _forced_policy(player, hole, board, policy_context, fold=False)
+
+
+def force_raise(
+    player: TablePlayer,
+    _hole: tuple[Card, Card],
+    _board: tuple[Card, ...],
+    policy_context: PolicyContext,
+) -> ActionDistribution:
+    legal = legal_opponent_actions(player, policy_context)
+    if OpponentAction.RAISE in legal:
+        action = OpponentAction.RAISE
+    elif OpponentAction.CALL in legal:
+        action = OpponentAction.CALL
+    elif OpponentAction.ALL_IN in legal and policy_context.amount_to_call > 0:
+        action = OpponentAction.ALL_IN
+    else:
+        action = OpponentAction.CHECK
+    return ActionDistribution(probabilities={action: 1.0}, explanation=("test policy",))
 
 
 def quick(simulations: int = 200) -> ActionAwareSettings:
@@ -281,6 +309,21 @@ def test_same_seed_is_reproducible_and_confidence_shrinks() -> None:
     assert larger_bet.standard_error < first_bet.standard_error
 
 
+def test_different_seeds_remain_within_combined_sampling_uncertainty() -> None:
+    game_state = state()
+    first = calculate_action_aware_ev(game_state, quick(600), seed=101, policy_callback=force_call)
+    second = calculate_action_aware_ev(game_state, quick(600), seed=202, policy_callback=force_call)
+    first_bet = next(item for item in first.action_results if item.candidate.label == "Bet 50% pot")
+    second_bet = next(
+        item for item in second.action_results if item.candidate.label == "Bet 50% pot"
+    )
+    combined_standard_error = sqrt(first_bet.standard_error**2 + second_bet.standard_error**2)
+
+    assert abs(first_bet.estimated_net_ev - second_bet.estimated_net_ev) <= (
+        3.5 * combined_standard_error
+    )
+
+
 def test_players_behind_change_action_frequencies() -> None:
     tight_table = table(6, Position.SMALL_BLIND, "flop")
     tight_players = tuple(
@@ -323,3 +366,138 @@ def test_hero_last_to_act_has_no_later_responses_after_check() -> None:
         item for item in result.action_results if item.candidate.kind is HeroActionKind.CHECK
     )
     assert check.facing_raise_probability == 0.0
+
+
+def test_no_fold_policy_approaches_raw_all_showdown_equity() -> None:
+    base = table(3, Position.BUTTON, "river")
+    players = tuple(
+        replace(player, profile=OpponentProfile.CUSTOM, range_text="random")
+        if not player.is_hero
+        else player
+        for player in base.players
+    )
+    game_state = GameState(
+        active_players=3,
+        hero_cards=cards("AS KS"),
+        community_cards=cards("QS 10D 4S 2C 3H"),
+        hero_position=Position.BUTTON,
+        pot_size=120.0,
+        hero_stack=500.0,
+        effective_stack=500.0,
+        big_blind=10.0,
+        table_state=replace(base, players=players),
+    )
+    action_result = calculate_action_aware_ev(
+        game_state, quick(1_500), seed=71, policy_callback=force_call
+    )
+    raw = calculate_equity(game_state, simulation_count=1_500, seed=71)
+    check = next(
+        item for item in action_result.action_results if item.candidate.kind is HeroActionKind.CHECK
+    )
+
+    assert check.conditional_showdown_equity == pytest.approx(raw.total_equity, abs=0.05)
+
+
+def test_folded_players_do_not_reach_board_only_split_showdown() -> None:
+    base = table(3, Position.BUTTON, "river")
+    players = tuple(
+        replace(player, folded=True, eligible_to_act=False)
+        if player.seat == 1
+        else replace(player, profile=OpponentProfile.CUSTOM, range_text="random")
+        if not player.is_hero
+        else player
+        for player in base.players
+    )
+    game_state = GameState(
+        active_players=3,
+        hero_cards=cards("2C 3D"),
+        community_cards=cards("AS KS QS JS 10S"),
+        hero_position=Position.BUTTON,
+        pot_size=90.0,
+        hero_stack=500.0,
+        effective_stack=500.0,
+        big_blind=10.0,
+        table_state=replace(base, players=players),
+    )
+    result = calculate_action_aware_ev(game_state, quick(100), seed=5, policy_callback=force_call)
+    check = next(
+        item for item in result.action_results if item.candidate.kind is HeroActionKind.CHECK
+    )
+
+    assert check.conditional_showdown_equity == 0.5
+    assert check.multiple_continue_probability == 0.0
+
+
+def test_prior_bettor_remains_when_player_behind_folds() -> None:
+    base = table(6, Position.CUTOFF, "flop")
+    players = []
+    for player in base.players:
+        if player.is_hero:
+            players.append(player)
+        elif player.seat == 4:
+            players.append(
+                replace(
+                    player,
+                    previous_actions=("Bet",),
+                    acted_this_round=True,
+                    round_contribution=30.0,
+                    total_contribution=30.0,
+                )
+            )
+        elif player.seat == 0:
+            players.append(replace(player, acted_this_round=False))
+        else:
+            players.append(replace(player, folded=True, eligible_to_act=False))
+    game_state = state(
+        6,
+        Position.CUTOFF,
+        amount_to_call=30.0,
+        table_state=replace(base, players=tuple(players)),
+    )
+    result = calculate_action_aware_ev(game_state, quick(100), seed=8, policy_callback=force_fold)
+    call = next(
+        item for item in result.action_results if item.candidate.kind is HeroActionKind.CALL
+    )
+
+    assert call.exactly_one_continues_probability == 1.0
+    assert call.multiple_continue_probability == 0.0
+
+
+def test_raises_reopen_action_and_increase_final_pot() -> None:
+    game_state = state()
+    result = calculate_action_aware_ev(game_state, quick(100), seed=12, policy_callback=force_raise)
+    bet = next(item for item in result.action_results if item.candidate.label == "Bet 50% pot")
+
+    assert bet.facing_raise_probability == 1.0
+    assert bet.average_final_pot > game_state.pot_size + bet.candidate.additional_investment
+
+
+def test_short_all_in_cannot_win_unmatched_side_pot() -> None:
+    base = table(2, Position.BUTTON, "river")
+    players = tuple(
+        replace(player, stack=50.0, profile=OpponentProfile.CUSTOM, range_text="random")
+        if not player.is_hero
+        else player
+        for player in base.players
+    )
+    game_state = GameState(
+        active_players=2,
+        hero_cards=cards("2C 3D"),
+        community_cards=cards("AS KS QS JS 10S"),
+        hero_position=Position.BUTTON,
+        pot_size=100.0,
+        hero_stack=500.0,
+        effective_stack=50.0,
+        big_blind=10.0,
+        table_state=replace(base, players=players),
+    )
+    result = calculate_action_aware_ev(game_state, quick(50), seed=20, policy_callback=force_call)
+    all_in = next(item for item in result.action_results if item.candidate.label == "All-in")
+
+    assert all_in.estimated_net_ev == 50.0
+    assert all_in.average_hero_investment == 500.0
+
+
+def test_action_aware_cancellation_is_prompt() -> None:
+    with pytest.raises(SimulationCancelledError):
+        calculate_action_aware_ev(state(), quick(1_000), cancel_callback=lambda: True)

@@ -1,7 +1,7 @@
 """Bounded action-aware Monte Carlo decision simulation."""
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from math import sqrt
 from random import Random
 from time import perf_counter
@@ -58,6 +58,7 @@ class _SimPlayer:
     contribution: float
     folded: bool
     all_in: bool
+    additional_investment: float = 0.0
 
     @property
     def can_act(self) -> bool:
@@ -214,13 +215,20 @@ def _simulate_iteration(
         [hero_contribution, *(state.contribution for state in opponents.values())],
         default=hero_contribution,
     )
-    aggression_reopens = candidate.kind in {
-        HeroActionKind.BET,
-        HeroActionKind.RAISE,
-        HeroActionKind.ALL_IN,
-    } and hero_contribution > max(
-        (player.round_contribution for player in table.players if not player.is_hero),
-        default=0.0,
+    prior_highest = max(
+        [
+            table.hero.round_contribution + game_state.amount_to_call,
+            *(player.round_contribution for player in table.players if not player.is_hero),
+        ]
+    )
+    aggression_reopens = (
+        candidate.kind
+        in {
+            HeroActionKind.BET,
+            HeroActionKind.RAISE,
+            HeroActionKind.ALL_IN,
+        }
+        and hero_contribution > prior_highest
     )
     queue = list(table.response_order_after_hero(aggression_reopens=aggression_reopens))
     raises = int(candidate.kind is HeroActionKind.RAISE)
@@ -247,14 +255,22 @@ def _simulate_iteration(
             raises_so_far=raises,
             maximum_raises=settings.maximum_raises_per_street,
         )
+        policy_player = replace(
+            state.player,
+            stack=state.stack,
+            round_contribution=state.contribution,
+            total_contribution=max(state.player.total_contribution, state.contribution),
+            folded=state.folded,
+            all_in=state.all_in,
+        )
         policy = policy_callback or opponent_action_distribution
         distribution = policy(
-            state.player,
+            policy_player,
             state.hole_cards,
             tuple(game_state.community_cards),
             context,
         )
-        legal = set(legal_opponent_actions(state.player, context))
+        legal = set(legal_opponent_actions(policy_player, context))
         if not set(distribution.probabilities).issubset(legal):
             raise InvalidGameStateError("Opponent policy returned an illegal action.")
         action = _sample_action(distribution.probabilities, rng)
@@ -313,7 +329,7 @@ def _simulate_iteration(
     continuing = tuple(state for state in opponents.values() if state.reaches_showdown)
     if not continuing:
         return _IterationResult(
-            net_result=original_pot,
+            net_result=pot - hero_investment,
             immediate_fold=aggression_reopens,
             opponents_continuing=0,
             faced_raise=faced_raise,
@@ -331,7 +347,13 @@ def _simulate_iteration(
         evaluate_hand_score((*state.hole_cards, *board)) for state in continuing
     )
     share = _pot_share(hero_score, opponent_scores)
-    returned = share * pot
+    returned = _hero_showdown_return(
+        original_pot,
+        hero_investment,
+        hero_score,
+        opponents,
+        opponent_scores,
+    )
     return _IterationResult(
         net_result=returned - hero_investment,
         immediate_fold=False,
@@ -357,8 +379,15 @@ def _deal_opponents(game_state: GameState, rng: Random) -> tuple[dict[int, _SimP
             continue
         profile = load_opponent_profiles()[player.profile]
         range_text = player.range_text
-        if range_text.strip().lower() in {"", "random", "profile"} and player.profile.value != "custom":
-            range_text = profile.preflop_range if game_state.street.value == "preflop" else profile.postflop_range
+        if (
+            range_text.strip().lower() in {"", "random", "profile"}
+            and player.profile.value != "custom"
+        ):
+            range_text = (
+                profile.preflop_range
+                if game_state.street.value == "preflop"
+                else profile.postflop_range
+            )
         if range_text.strip().lower() in {"", "random", "any two"}:
             first_index = rng.randrange(len(remaining))
             first = remaining.pop(first_index)
@@ -428,6 +457,7 @@ def _apply_opponent_action(
     paid = max(0.0, min(paid, state.stack))
     state.stack -= paid
     state.contribution += paid
+    state.additional_investment += paid
     state.all_in = state.stack <= 0
     return pot + paid, max(highest, state.contribution)
 
@@ -469,6 +499,47 @@ def _pot_share(hero: HandScore, opponents: tuple[HandScore, ...]) -> float:
     best = max(scores)
     winners = sum(1 for score in scores if score == best)
     return 1.0 / winners if hero == best else 0.0
+
+
+def _hero_showdown_return(
+    current_pot: float,
+    hero_investment: float,
+    hero_score: HandScore,
+    opponents: dict[int, _SimPlayer],
+    continuing_scores: tuple[HandScore, ...],
+) -> float:
+    """Return hero's base-pot and decision-time side-pot winnings."""
+    continuing_states = tuple(state for state in opponents.values() if state.reaches_showdown)
+    score_by_seat = {
+        state.player.seat: score
+        for state, score in zip(continuing_states, continuing_scores, strict=True)
+    }
+    returned = _pot_share(hero_score, continuing_scores) * current_pot
+    contributions: dict[int | str, float] = {
+        "hero": hero_investment,
+        **{state.player.seat: state.additional_investment for state in opponents.values()},
+    }
+    levels = sorted({amount for amount in contributions.values() if amount > 0})
+    previous = 0.0
+    for level in levels:
+        contributors = tuple(
+            participant for participant, amount in contributions.items() if amount >= level
+        )
+        layer = (level - previous) * len(contributors)
+        previous = level
+        eligible_scores: list[tuple[int | str, HandScore]] = []
+        if hero_investment >= level:
+            eligible_scores.append(("hero", hero_score))
+        eligible_scores.extend(
+            (seat, score) for seat, score in score_by_seat.items() if contributions[seat] >= level
+        )
+        if not eligible_scores:
+            continue
+        best = max(score for _, score in eligible_scores)
+        winners = tuple(participant for participant, score in eligible_scores if score == best)
+        if "hero" in winners:
+            returned += layer / len(winners)
+    return returned
 
 
 def _position_fraction(order: tuple[int, ...], seat: int) -> float:

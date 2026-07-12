@@ -78,7 +78,7 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
         self._auto_timer = qtcore.QTimer(self.window)
         self._auto_timer.setSingleShot(True)
         self._auto_timer.setInterval(600)
-        self._auto_timer.timeout.connect(self.analyze)
+        self._auto_timer.timeout.connect(self._run_automatic_analysis)
         self._build()
         self._restore_geometry()
         self._apply_theme(self.settings.theme)
@@ -153,6 +153,9 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
         self.aggressor_seat = self.qtwidgets.QSpinBox()
         self.aggressor_seat.setRange(-1, 9)
         self.aggressor_seat.setSpecialValueText("None")
+        self.current_actor_seat = self.qtwidgets.QSpinBox()
+        self.current_actor_seat.setRange(-1, 9)
+        self.current_actor_seat.setSpecialValueText("Hero")
         self.action_order_label = self.qtwidgets.QLabel("Action order: calculating...")
         self.action_order_label.setWordWrap(True)
         self.advanced_opponents = self.qtwidgets.QPushButton("Edit individual opponents")
@@ -214,6 +217,11 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
                 self.aggressor_seat,
                 "Seat responsible for the current amount to call, or None.",
             ),
+            (
+                "Current actor seat",
+                self.current_actor_seat,
+                "Use Hero for analysis; another seat can be represented but must act first.",
+            ),
         )
         for label, widget, tooltip in setup_rows:
             widget.setToolTip(tooltip)
@@ -246,8 +254,6 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
             row.addWidget(clear)
             cards.addRow(slot, row)
             self.card_edits.append(edit)
-        for edit, value in zip(self.card_edits, ("AS", "KS", "QS", "10D", "4S"), strict=False):
-            edit.setText(value)
         outer.addWidget(cards_group)
         outer.addStretch(1)
         scroll = self.qtwidgets.QScrollArea()
@@ -382,6 +388,7 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
             self.players,
             self.players_behind,
             self.aggressor_seat,
+            self.current_actor_seat,
             self.small_blind,
             self.big_blind,
             self.ante,
@@ -505,7 +512,11 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
                     acted_this_round=override.acted_this_round,
                 )
             players.append(configured)
-        return replace(base, players=tuple(players), current_actor_seat=base.hero_seat)
+        selected_actor = int(self.current_actor_seat.value())
+        current_actor = base.hero_seat if selected_actor < 0 else selected_actor
+        if current_actor >= player_count:
+            raise ValueError("The current actor seat is outside the active table.")
+        return replace(base, players=tuple(players), current_actor_seat=current_actor)
 
     def _parse_seats(self, text: str, player_count: int, label: str) -> set[int]:
         if not text.strip():
@@ -528,6 +539,12 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
             state = self._state()
         except Exception as exc:  # noqa: BLE001 - user-facing validation boundary
             self._show_error(str(exc))
+            return
+        if (
+            state.table_state is not None
+            and state.table_state.current_actor_seat != state.table_state.hero_seat
+        ):
+            self._show_error("Action-aware analysis requires Hero to be the current actor.")
             return
         self.analysis_id += 1
         current_id = self.analysis_id
@@ -644,7 +661,7 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
             self.qtcore.QTimer.singleShot(0, self.window.close)
             return
         if self.auto_analysis.isChecked() and self.latest_result is None:
-            self._auto_timer.start()
+            self._schedule_automatic_analysis()
 
     def _input_changed(self, *_args: object) -> None:
         if self._suspend_changes:
@@ -659,19 +676,43 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
         self._update_action_order()
         self._sync_button_states(running=self.thread is not None and self.thread.isRunning())
         if self.auto_analysis.isChecked():
-            self._auto_timer.start()
+            self._schedule_automatic_analysis()
 
     def _auto_analysis_changed(self, enabled: bool) -> None:
         self.settings = replace(self.settings, automatic_analysis=enabled)
         self._save_settings_safely()
         if enabled:
-            self._auto_timer.start()
+            self._schedule_automatic_analysis()
         else:
             self._auto_timer.stop()
+
+    def _schedule_automatic_analysis(self) -> None:
+        """Debounce automatic analysis only for a complete, valid Hero decision."""
+        self._auto_timer.stop()
+        if not self.auto_analysis.isChecked() or self.thread is not None:
+            return
+        if self._automatic_analysis_state_is_valid():
+            self._auto_timer.start()
+
+    def _run_automatic_analysis(self) -> None:
+        """Revalidate after the debounce interval before starting work."""
+        if self.auto_analysis.isChecked() and self._automatic_analysis_state_is_valid():
+            self.analyze()
+
+    def _automatic_analysis_state_is_valid(self) -> bool:
+        try:
+            state = self._state()
+        except Exception:  # noqa: BLE001 - incomplete edits are expected while typing
+            return False
+        return (
+            state.table_state is None
+            or state.table_state.current_actor_seat == state.table_state.hero_seat
+        )
 
     def _player_count_changed(self, player_count: int) -> None:
         self.players_behind.setMaximum(max(0, player_count - 1))
         self.aggressor_seat.setMaximum(max(0, player_count - 1))
+        self.current_actor_seat.setMaximum(max(0, player_count - 1))
         self.player_overrides = {
             seat: values for seat, values in self.player_overrides.items() if seat < player_count
         }
@@ -686,7 +727,7 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
             table = self._build_table_state(street)
             order = " -> ".join(
                 table.player(seat).position.replace("_", " ").title()
-                for seat in table.action_order()
+                for seat in table.action_order(table.current_actor_seat)
             )
             behind = table.players_after_hero()
             behind_text = ", ".join(player.position.replace("_", " ").title() for player in behind)
@@ -998,10 +1039,10 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
     def about(self) -> None:
         box = self.qtwidgets.QMessageBox(self.window)
         box.setWindowTitle("About Peaceful Poker")
-        box.setText("Peaceful Poker 1.0.0")
+        box.setText("Peaceful Poker 1.1.0")
         box.setInformativeText(
-            "An educational No-Limit Texas Hold'em decision trainer. Equity estimates and "
-            "rule-based recommendations depend on the entered assumptions and are not GTO or "
+            "An educational No-Limit Texas Hold'em decision trainer. Raw showdown equity and "
+            "action-aware EV depend on entered ranges and behavior profiles; neither is GTO or "
             "guaranteed profitable.\n\nSaved data: " + str(user_data_dir())
         )
         if self.qtgui is not None:
@@ -1023,6 +1064,11 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
         self.stack.setValue(state.hero_stack)
         self.effective.setValue(state.effective_stack)
         if state.table_state is not None:
+            self.current_actor_seat.setValue(
+                -1
+                if state.table_state.current_actor_seat == state.table_state.hero_seat
+                else state.table_state.current_actor_seat
+            )
             opponents = state.table_state.active_opponents
             if opponents:
                 self.profile_combo.setCurrentIndex(

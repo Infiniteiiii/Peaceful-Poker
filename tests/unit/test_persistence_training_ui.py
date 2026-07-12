@@ -222,8 +222,19 @@ def test_training_action_order_situations(
         )
 
 
+def test_smoke_behavior_requires_explicit_flag(monkeypatch: pytest.MonkeyPatch) -> None:
+    from poker_trainer.app import smoke_test_enabled
+
+    monkeypatch.setenv("PEACEFUL_POKER_SMOKE_REPORT", "ignored.json")
+    monkeypatch.setenv("PEACEFUL_POKER_AUTOCLOSE_MS", "10")
+    monkeypatch.delenv("PEACEFUL_POKER_SMOKE_TEST", raising=False)
+
+    assert not smoke_test_enabled()
+
+
 def test_application_startup_smoke(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    monkeypatch.setenv("PEACEFUL_POKER_SMOKE_TEST", "1")
     monkeypatch.setenv("PEACEFUL_POKER_AUTOCLOSE_MS", "10")
 
     assert run() == 0

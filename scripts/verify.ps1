@@ -31,6 +31,7 @@ try {
     New-Item -ItemType Directory -Force -Path $SmokeRoot | Out-Null
     $env:LOCALAPPDATA = Join-Path $SmokeRoot "LocalAppData"
     $env:PEACEFUL_POKER_SMOKE_REPORT = $Report
+    $env:PEACEFUL_POKER_SMOKE_TEST = "1"
     Remove-Item Env:PEACEFUL_POKER_AUTOCLOSE_MS -ErrorAction SilentlyContinue
 
     $Process = Start-Process -FilePath $Exe -WorkingDirectory $SmokeRoot -PassThru

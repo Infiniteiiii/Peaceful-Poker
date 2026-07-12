@@ -9,6 +9,11 @@ from typing import Any
 from poker_trainer.services.logging_service import configure_logging
 
 
+def smoke_test_enabled() -> bool:
+    """Return whether explicit application smoke behavior is enabled."""
+    return os.environ.get("PEACEFUL_POKER_SMOKE_TEST") == "1"
+
+
 def run() -> int:
     """Start the desktop application."""
     try:
@@ -28,17 +33,25 @@ def run() -> int:
         app = QtWidgets.QApplication(sys.argv)
     app.setApplicationName("Peaceful Poker")
     app.setApplicationDisplayName("Peaceful Poker")
-    app.setApplicationVersion("1.0.0")
+    app.setApplicationVersion("1.1.0")
     icon_path = resource_path("peaceful_poker.ico")
     if icon_path.exists():
         app.setWindowIcon(QtGui.QIcon(str(icon_path)))
     main_window = MainWindow(QtWidgets, QtCore, QtGui)
+    app._peaceful_poker_main_window = main_window
     main_window.show()
-    smoke_report = os.environ.get("PEACEFUL_POKER_SMOKE_REPORT")
+    smoke_enabled = smoke_test_enabled()
+    smoke_report = os.environ.get("PEACEFUL_POKER_SMOKE_REPORT") if smoke_enabled else None
     if smoke_report:
         from poker_trainer.services.storage_service import SavedHand, save_hand, user_data_dir
 
         main_window.preset_combo.setCurrentText("Quick")
+        for edit, value in zip(
+            main_window.card_edits,
+            ("AS", "KS", "QS", "10D", "4S"),
+            strict=False,
+        ):
+            edit.setText(value)
 
         def finish_smoke() -> None:
             if main_window.thread is not None:
@@ -79,7 +92,7 @@ def run() -> int:
 
         QtCore.QTimer.singleShot(0, main_window.analyze)
         QtCore.QTimer.singleShot(100, finish_smoke)
-    autoclose = os.environ.get("PEACEFUL_POKER_AUTOCLOSE_MS")
+    autoclose = os.environ.get("PEACEFUL_POKER_AUTOCLOSE_MS") if smoke_enabled else None
     if autoclose:
         QtCore.QTimer.singleShot(int(autoclose), main_window.window.close)
     return int(app.exec())

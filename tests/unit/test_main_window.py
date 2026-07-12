@@ -19,6 +19,15 @@ def cards(codes: str) -> tuple[Card, ...]:
     return tuple(Card.from_code(code) for code in codes.split())
 
 
+def enter_default_cards(window: MainWindow) -> None:
+    for edit, value in zip(
+        window.card_edits,
+        ("AS", "KS", "QS", "10D", "4S"),
+        strict=False,
+    ):
+        edit.setText(value)
+
+
 @pytest.fixture
 def window(qtbot: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[MainWindow]:
     monkeypatch.setattr(main_window_module, "load_settings", lambda: UserSettings())
@@ -26,11 +35,36 @@ def window(qtbot: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Itera
     result = MainWindow(QtWidgets, QtCore, QtGui)
     qtbot.addWidget(result.window)
     result.show()
+    enter_default_cards(result)
     yield result
     if result.worker is not None:
         result.worker.cancel()
     if result.thread is not None:
         qtbot.waitUntil(lambda: result.thread is None, timeout=15_000)
+    result.window.close()
+
+
+def test_startup_remains_visible_idle_and_empty(
+    qtbot: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(
+        main_window_module,
+        "load_settings",
+        lambda: UserSettings(automatic_analysis=True),
+    )
+    monkeypatch.setattr(main_window_module, "save_settings", lambda _settings: tmp_path)
+    result = MainWindow(QtWidgets, QtCore, QtGui)
+    qtbot.addWidget(result.window)
+    result.show()
+    result._schedule_automatic_analysis()
+    qtbot.wait(750)
+
+    assert result.window.isVisible()
+    assert all(not edit.text() for edit in result.card_edits)
+    assert result.thread is None
+    assert result.worker is None
+    assert not result._auto_timer.isActive()
+
     result.window.close()
 
 
@@ -82,6 +116,38 @@ def test_background_analysis_completes_and_populates_results(
     assert "ACTION-AWARE ANALYSIS" in window.output.toPlainText()
     assert window.action_table.rowCount() > 0
     assert window.export_button.isEnabled()
+    assert window.window.isVisible()
+    assert window.thread is None
+    assert window.worker is None
+    assert not QtWidgets.QApplication.closingDown()
+
+
+def test_failed_analysis_displays_error_and_leaves_window_open(
+    window: MainWindow, qtbot: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class FailingAnalysisWorker:
+        def __init__(self, qtcore: Any, *_args: object, **_kwargs: object) -> None:
+            class Worker(qtcore.QObject):
+                progress = qtcore.Signal(int, int)
+                finished = qtcore.Signal(object)
+                error = qtcore.Signal(str)
+
+                @qtcore.Slot()
+                def run(self) -> None:
+                    self.error.emit("forced analysis failure")
+
+                def cancel(self) -> None:
+                    pass
+
+            self.object = Worker()
+
+    monkeypatch.setattr(main_window_module, "AnalysisWorker", FailingAnalysisWorker)
+    window.analyze()
+    qtbot.waitUntil(lambda: window.thread is None, timeout=2_000)
+
+    assert "forced analysis failure" in window.output.toPlainText()
+    assert window.window.isVisible()
+    assert not QtWidgets.QApplication.closingDown()
 
 
 def test_input_change_prevents_stale_worker_result(window: MainWindow, qtbot: Any) -> None:
@@ -95,6 +161,8 @@ def test_input_change_prevents_stale_worker_result(window: MainWindow, qtbot: An
 
     assert window.latest_result is None
     assert "Inputs changed" in window.output.toPlainText()
+    assert window.window.isVisible()
+    assert not window.close_pending
 
 
 def test_close_during_analysis_cancels_then_closes(window: MainWindow, qtbot: Any) -> None:
@@ -160,3 +228,13 @@ def test_individual_opponent_override_and_last_to_act_details(window: MainWindow
     last_to_act = window._state()
     assert last_to_act.table_state is not None
     assert not last_to_act.table_state.players_after_hero()
+
+
+def test_nonhero_current_actor_is_represented_but_analysis_waits(window: MainWindow) -> None:
+    window.current_actor_seat.setValue(2)
+    game_state = window._state()
+
+    assert game_state.table_state is not None
+    assert game_state.table_state.current_actor_seat == 2
+    window.analyze()
+    assert "requires Hero to be the current actor" in window.output.toPlainText()

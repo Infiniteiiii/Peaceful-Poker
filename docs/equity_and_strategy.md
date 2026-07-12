@@ -14,6 +14,11 @@ opponent cards before dealing opponents and completing the board. Split pots are
 credited as fractional pot share, so a three-way tie gives the hero one third of
 an equity point for that outcome.
 
+This is raw showdown equity: it assumes every included, non-folded opponent reaches showdown.
+Peaceful Poker preserves this result and reports action-aware expected value separately. EV adds
+profile-based folds, calls, raises, players behind, new investments, and immediate pot wins; it is
+not another form of equity. See `action_aware_methodology.md`.
+
 Opponent assumptions currently support random holdings, preset filtered ranges,
 and a documented notation subset: pairs such as `AA`, suited and offsuit hands
 such as `AKs` and `AQo`, pair-plus ranges such as `99+`, suited-plus ranges such
