@@ -40,6 +40,23 @@ def run() -> int:
     main_window = MainWindow(QtWidgets, QtCore, QtGui)
     app._peaceful_poker_main_window = main_window
     main_window.show()
+
+    # Start hot-reload watcher if enabled (development only)
+    observer = None
+    if os.environ.get("PEACEFUL_POKER_HOT_RELOAD") == "1":
+        try:
+            from poker_trainer.services.hot_reload_service import (
+                start_hot_reload_watcher,
+            )
+
+            ui_dir = Path(__file__).parent / "ui"
+            observer = start_hot_reload_watcher(
+                lambda: main_window.reload_ui(),
+                ui_dir,
+            )
+        except ImportError:
+            print("[HOT RELOAD] watchdog not installed; skipping hot-reload")
+
     smoke_enabled = smoke_test_enabled()
     smoke_report = os.environ.get("PEACEFUL_POKER_SMOKE_REPORT") if smoke_enabled else None
     if smoke_report:
@@ -95,4 +112,16 @@ def run() -> int:
     autoclose = os.environ.get("PEACEFUL_POKER_AUTOCLOSE_MS") if smoke_enabled else None
     if autoclose:
         QtCore.QTimer.singleShot(int(autoclose), main_window.window.close)
-    return int(app.exec())
+
+    result = int(app.exec())
+
+    # Stop observer on exit
+    if observer is not None:
+        observer.stop()
+        observer.join()
+
+    return result
+
+
+if __name__ == "__main__":
+    raise SystemExit(run())

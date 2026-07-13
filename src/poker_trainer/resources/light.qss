@@ -1,47 +1,139 @@
 QWidget {
-    background: #f7f8fa;
-    color: #20242a;
+    background: __BG_APP__;
+    color: __TEXT_PRIMARY__;
+}
+QMainWindow#mainWindow {
+    background: __BG_APP__;
+}
+QFrame#sidebar,
+QGroupBox,
+QWidget#panelCard {
+    background: __BG_SURFACE__;
+    border: 1px solid __BORDER_SUBTLE__;
+    border-radius: 14px;
 }
 QGroupBox {
-    border: 1px solid #c9ced6;
-    border-radius: 6px;
-    margin-top: 10px;
-    padding-top: 8px;
+    margin-top: 14px;
+    padding: 16px;
     font-weight: 600;
 }
 QGroupBox::title {
     subcontrol-origin: margin;
-    left: 8px;
+    left: 16px;
+    top: -10px;
     padding: 0 4px;
 }
-QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QTextEdit, QTableWidget {
-    background: #ffffff;
-    border: 1px solid #aeb5bf;
-    border-radius: 4px;
-    padding: 4px;
-    selection-background-color: #176b5b;
-    selection-color: #ffffff;
+QLabel#groupHelper,
+QLabel#sidebarFooter,
+QLabel#sidebarLabel {
+    color: __TEXT_SECONDARY__;
+    font-size: 12px;
+}
+QLabel#appTitle {
+    color: __TEXT_PRIMARY__;
+    font-weight: 700;
+    font-size: 18px;
+}
+QWidget#sidebar {
+    background: __BG_SURFACE__;
+}
+QLabel#sidebarLogo {
+    font-size: 32px;
+    font-weight: 700;
+    color: __ACCENT_PRIMARY__;
 }
 QPushButton {
-    background: #ffffff;
-    border: 1px solid #9fa7b2;
-    border-radius: 4px;
-    padding: 6px 10px;
+    background: __BG_SURFACE_RAISED__;
+    color: __TEXT_PRIMARY__;
+    border: 1px solid __BORDER_SUBTLE__;
+    border-radius: 10px;
+    padding: 8px 12px;
+    min-height: 36px;
 }
-QPushButton:hover { background: #e9eeec; }
-QPushButton:pressed { background: #d9e2df; }
-QPushButton:disabled { color: #777e87; background: #e7e9ec; }
+QPushButton:hover {
+    background: __BG_SURFACE__;
+    border-color: __ACCENT_SECONDARY__;
+}
+QPushButton:pressed {
+    background: __BG_SURFACE_RAISED__;
+    transform: scale(0.99);
+}
+QPushButton:disabled {
+    color: __TEXT_DISABLED__;
+    background: __BG_SURFACE__;
+    border-color: __BORDER_SUBTLE__;
+}
 QPushButton#primaryButton {
-    background: #176b5b;
-    color: #ffffff;
-    border-color: #125447;
-    font-weight: 600;
+    background: __ACCENT_PRIMARY__;
+    color: #08110a;
+    border-color: __ACCENT_PRIMARY__;
+    font-weight: 700;
+}
+QPushButton#sidebarNav {
+    text-align: left;
+}
+QToolButton#themeToggle {
+    background: __BG_SURFACE__;
+    border: 1px solid __BORDER_SUBTLE__;
+    border-radius: 10px;
+    padding: 6px 12px;
+}
+QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QTextEdit, QTableWidget {
+    background: __BG_SURFACE_RAISED__;
+    color: __TEXT_PRIMARY__;
+    border: 1px solid __BORDER_SUBTLE__;
+    border-radius: 10px;
+    padding: 8px;
+}
+QLineEdit:disabled, QComboBox:disabled, QSpinBox:disabled, QDoubleSpinBox:disabled {
+    color: __TEXT_DISABLED__;
+}
+QComboBox::drop-down {
+    subcontrol-origin: padding;
+    subcontrol-position: top right;
+    width: 22px;
+    border-left: 1px solid __BORDER_SUBTLE__;
+}
+QComboBox::down-arrow {
+    image: none;
+    border: none;
+    width: 0;
+    height: 0;
+    margin: 0;
+}
+QScrollArea {
+    background: transparent;
 }
 QProgressBar {
-    border: 1px solid #aeb5bf;
-    border-radius: 4px;
+    border: 1px solid __BORDER_SUBTLE__;
+    border-radius: 10px;
     text-align: center;
-    background: #ffffff;
+    background: __BG_SURFACE_RAISED__;
+    color: __TEXT_PRIMARY__;
 }
-QProgressBar::chunk { background: #218b76; }
-QTabBar::tab { padding: 7px 12px; }
+QProgressBar::chunk {
+    background: __ACCENT_PRIMARY__;
+    border-radius: 10px;
+}
+QTabBar::tab {
+    background: __BG_SURFACE_RAISED__;
+    color: __TEXT_SECONDARY__;
+    border: 1px solid __BORDER_SUBTLE__;
+    border-radius: 12px;
+    padding: 10px 14px;
+    margin: 0 4px;
+}
+QTabBar::tab:selected {
+    background: __ACCENT_PRIMARY__;
+    color: #08110a;
+    border-color: __ACCENT_PRIMARY__;
+}
+QHeaderView::section {
+    background: __BG_SURFACE__;
+    color: __TEXT_SECONDARY__;
+    border: 1px solid __BORDER_SUBTLE__;
+    padding: 6px;
+}
+QTableWidget {
+    gridline-color: __BORDER_SUBTLE__;
+}

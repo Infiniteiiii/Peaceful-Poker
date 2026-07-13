@@ -1,6 +1,7 @@
 """Main Peaceful Poker desktop window."""
 
 from dataclasses import replace
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +30,7 @@ from poker_trainer.ui.workers import AnalysisWorker
 
 _CARD_SLOTS = ("Hero card 1", "Hero card 2", "Flop 1", "Flop 2", "Flop 3", "Turn", "River")
 _RANGE_OPTIONS = ("random", "premium", "tight", "standard", "loose")
+_PREVIOUS_ACTION_OPTIONS = ("None", "Checked", "Called", "Bet", "Raised")
 _PRESETS = {
     "Quick": SimulationPreset.QUICK,
     "Standard": SimulationPreset.STANDARD,
@@ -37,6 +39,35 @@ _PRESETS = {
 }
 _ACTION_PRESETS = ("Quick", "Standard", "Accurate")
 _EMPTY_RESULT = "Enter two hero cards and a valid board, then choose Analyze."
+
+_THEME_TOKENS = {
+    "dark": {
+        "bg_app": "#0B1120",
+        "bg_surface": "#121A2B",
+        "bg_surface_raised": "#182338",
+        "border_subtle": "#232E45",
+        "accent_primary": "#2FE6B3",
+        "accent_secondary": "#4C8DFF",
+        "accent_warning": "#F5A623",
+        "accent_negative": "#FF5C6C",
+        "text_primary": "#EAF0FA",
+        "text_secondary": "#8C97AF",
+        "text_disabled": "#4B5568",
+    },
+    "light": {
+        "bg_app": "#F3F5F7",
+        "bg_surface": "#FFFFFF",
+        "bg_surface_raised": "#F2F4F7",
+        "border_subtle": "#D3D8E0",
+        "accent_primary": "#2FE6B3",
+        "accent_secondary": "#4C8DFF",
+        "accent_warning": "#F5A623",
+        "accent_negative": "#FF5C6C",
+        "text_primary": "#1F2937",
+        "text_secondary": "#6B7280",
+        "text_disabled": "#9CA3AF",
+    },
+}
 
 
 class MainWindow:  # pragma: no cover - behavior covered through Qt integration tests
@@ -92,24 +123,209 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
         """Show the concrete Qt window."""
         self.window.show()
 
+    def reload_ui(self) -> None:
+        """Reload UI stylesheet and theme (for hot-reload development)."""
+        try:
+            self._apply_theme(self.settings.theme)
+            print("[HOT RELOAD] UI reloaded successfully")
+        except Exception as e:
+            print(f"[HOT RELOAD] Error reloading: {e}")
+
     def _build(self) -> None:
         central = self.qtwidgets.QWidget()
         root = self.qtwidgets.QVBoxLayout(central)
         root.setContentsMargins(10, 10, 10, 10)
-        splitter = self.qtwidgets.QSplitter()
+        root.setSpacing(12)
+        root.addLayout(self._build_header())
+
+        self._landing_page = self._build_landing_page()
+        self._main_area = self._build_main_area()
+
+        root.addWidget(self._landing_page)
+        root.addWidget(self._main_area)
+        self._main_area.hide()
+
+        self.window.setCentralWidget(central)
+
+    def _build_header(self) -> Any:
+        bar = self.qtwidgets.QHBoxLayout()
+        bar.setSpacing(12)
+
+        title = self.qtwidgets.QLabel("Peaceful Poker")
+        title.setObjectName("appTitle")
+        left = self.qtcore.Qt.AlignmentFlag.AlignLeft
+        vcenter = self.qtcore.Qt.AlignmentFlag.AlignVCenter
+        title.setAlignment(left | vcenter)
+        bar.addWidget(title)
+
+        bar.addStretch(1)
+
+        self.theme_toggle = self.qtwidgets.QToolButton()
+        self.theme_toggle.setCheckable(True)
+        self.theme_toggle.setChecked(self.settings.theme == "dark")
+        self.theme_toggle.setText("Dark" if self.settings.theme == "dark" else "Light")
+        self.theme_toggle.setObjectName("themeToggle")
+        self.theme_toggle.clicked.connect(self._toggle_theme)
+        self.theme_toggle.setToolTip("Toggle between light and dark theme.")
+        bar.addWidget(self.theme_toggle)
+
+        return bar
+
+    def _build_landing_page(self) -> Any:
+        page = self.qtwidgets.QWidget()
+        page.setObjectName("landingPage")
+        layout = self.qtwidgets.QVBoxLayout(page)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(24)
+
+        layout.addStretch(1)
+
+        title = self.qtwidgets.QLabel("Peaceful Poker")
+        title.setObjectName("landingTitle")
+        title.setAlignment(self.qtcore.Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(title)
+
+        subtitle = self.qtwidgets.QLabel(
+            "A calm Texas Hold'em trainer for smarter decisions and clearer play."
+        )
+        subtitle.setObjectName("landingSubtitle")
+        subtitle.setAlignment(self.qtcore.Qt.AlignmentFlag.AlignCenter)
+        subtitle.setWordWrap(True)
+        layout.addWidget(subtitle)
+
+        button_group = self.qtwidgets.QVBoxLayout()
+        button_group.setSpacing(12)
+
+        start_button = self.qtwidgets.QPushButton("Start analysis")
+        start_button.setObjectName("landingButton")
+        start_button.clicked.connect(self._show_main_ui)
+        button_group.addWidget(start_button)
+
+        load_button = self.qtwidgets.QPushButton("Load saved hand")
+        load_button.setObjectName("landingButton")
+        load_button.clicked.connect(lambda: (self._show_main_ui(), self.load()))
+        button_group.addWidget(load_button)
+
+        settings_button = self.qtwidgets.QPushButton("Open settings")
+        settings_button.setObjectName("landingButton")
+        settings_button.clicked.connect(lambda: (self._show_main_ui(), self.settings_dialog()))
+        button_group.addWidget(settings_button)
+
+        training_button = self.qtwidgets.QPushButton("Training mode")
+        training_button.setObjectName("landingButton")
+        training_button.clicked.connect(lambda: (self._show_main_ui(), self.training()))
+        button_group.addWidget(training_button)
+
+        button_container = self.qtwidgets.QWidget()
+        button_container.setLayout(button_group)
+        layout.addWidget(button_container)
+
+        layout.addStretch(2)
+
+        return page
+
+    def _build_main_area(self) -> Any:
+        main = self.qtwidgets.QWidget()
+        main.setObjectName("mainArea")
+        main_layout = self.qtwidgets.QVBoxLayout(main)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(12)
+
+        body = self.qtwidgets.QHBoxLayout()
+        body.setSpacing(12)
+        body.addWidget(self._build_sidebar())
+
+        splitter = self.qtwidgets.QSplitter(self.qtcore.Qt.Orientation.Horizontal)
         splitter.addWidget(self._setup_panel())
         splitter.addWidget(self._results_panel())
         splitter.setSizes([430, 720])
         splitter.setStretchFactor(1, 1)
-        root.addWidget(splitter, 1)
-        root.addLayout(self._button_grid())
-        self.window.setCentralWidget(central)
+        body.addWidget(splitter, 1)
+
+        main_layout.addLayout(body, 1)
+        main_layout.addLayout(self._button_grid())
+
+        return main
+
+    def _show_main_ui(self) -> None:
+        self._landing_page.hide()
+        self._main_area.show()
+
+    def _build_sidebar(self) -> Any:
+        panel = self.qtwidgets.QFrame()
+        panel.setObjectName("sidebar")
+        panel.setMinimumWidth(220)
+        panel.setMaximumWidth(260)
+        layout = self.qtwidgets.QVBoxLayout(panel)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(12)
+
+        logo = self.qtwidgets.QLabel("PP")
+        logo.setObjectName("sidebarLogo")
+        logo.setAlignment(self.qtcore.Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(logo)
+
+        app_label = self.qtwidgets.QLabel("Peaceful Poker")
+        app_label.setObjectName("sidebarLabel")
+        app_label.setAlignment(self.qtcore.Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(app_label)
+
+        layout.addSpacing(8)
+
+        home_button = self.qtwidgets.QPushButton("Home")
+        home_button.clicked.connect(lambda: None)
+        home_button.setObjectName("sidebarNav")
+        home_button.setCheckable(True)
+        home_button.setChecked(True)
+        layout.addWidget(home_button)
+
+        saved_button = self.qtwidgets.QPushButton("Saved Hands")
+        saved_button.setObjectName("sidebarNav")
+        saved_button.clicked.connect(self.load)
+        layout.addWidget(saved_button)
+
+        training_nav = self.qtwidgets.QPushButton("Training")
+        training_nav.setObjectName("sidebarNav")
+        training_nav.clicked.connect(self.training)
+        layout.addWidget(training_nav)
+
+        settings_nav = self.qtwidgets.QPushButton("Settings")
+        settings_nav.setObjectName("sidebarNav")
+        settings_nav.clicked.connect(self.settings_dialog)
+        layout.addWidget(settings_nav)
+
+        help_nav = self.qtwidgets.QPushButton("Help / About")
+        help_nav.setObjectName("sidebarNav")
+        help_nav.clicked.connect(self.about)
+        layout.addWidget(help_nav)
+
+        layout.addStretch(1)
+
+        if hasattr(self.settings, 'app_version'):
+            footer = self.qtwidgets.QLabel(f"Version {self.settings.app_version}")
+        else:
+            footer = self.qtwidgets.QLabel("Version 1.0")
+        footer.setObjectName("sidebarFooter")
+        footer.setAlignment(self.qtcore.Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(footer)
+
+        return panel
+
+    def _toggle_theme(self) -> None:
+        from contextlib import suppress
+        new_theme = "dark" if self.theme_toggle.isChecked() else "light"
+        self.settings = replace(self.settings, theme=new_theme)
+        self.theme_toggle.setText("Dark" if self.settings.theme == "dark" else "Light")
+        self._apply_theme(self.settings.theme)
+        with suppress(Exception):
+            save_settings(self.settings)
 
     def _setup_panel(self) -> Any:
         content = self.qtwidgets.QWidget()
         outer = self.qtwidgets.QVBoxLayout(content)
-        game_group = self.qtwidgets.QGroupBox("Game setup")
-        game = self.qtwidgets.QFormLayout(game_group)
+        outer.setSpacing(16)
+        outer.setContentsMargins(0, 0, 0, 0)
+
         self.players = self.qtwidgets.QSpinBox()
         self.players.setRange(2, 10)
         self.players.setValue(self.settings.default_player_count)
@@ -161,75 +377,80 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
         self.advanced_opponents = self.qtwidgets.QPushButton("Edit individual opponents")
         self.auto_analysis = self.qtwidgets.QCheckBox("Analyze automatically after changes")
         self.auto_analysis.setChecked(self.settings.automatic_analysis)
-        setup_rows = (
-            (
-                "Active players",
-                self.players,
-                "Total players still active in the hand, including hero.",
-            ),
-            ("Hero position", self.position, "Hero's table position."),
-            ("Small blind", self.small_blind, "Small blind size in chips."),
-            ("Big blind", self.big_blind, "Big blind size in chips."),
-            ("Ante", self.ante, "Ante paid per player, if any."),
-            (
-                "Current pot",
-                self.pot,
-                "All chips in the middle, including the current opponent bet, "
-                "excluding hero's pending call.",
-            ),
-            ("Amount to call", self.call, "Additional chips hero must put in to continue."),
-            ("Hero stack", self.stack, "Hero's remaining stack before the decision."),
-            ("Effective stack", self.effective, "Smallest relevant remaining stack."),
-            ("Previous action", self.previous_action, "Most recent action facing hero."),
-            ("Opponent range", self.range_combo, "Simplified opponent holding assumption."),
-            (
-                "Opponent profile",
-                self.profile_combo,
-                "Default transparent behavior profile for opponents.",
-            ),
-            (
-                "Simulation accuracy",
-                self.preset_combo,
-                "Monte Carlo iteration count when exact enumeration is impractical.",
-            ),
-            (
-                "Action-aware accuracy",
-                self.action_preset_combo,
-                "Policy simulations per candidate action.",
-            ),
-            (
-                "Players behind hero",
-                self.players_behind,
-                "Opponents still eligible to act after hero in this betting round.",
-            ),
-            (
-                "Folded seat numbers",
-                self.folded_seats,
-                "Comma-separated zero-based seats that have folded.",
-            ),
-            (
-                "Called seat numbers",
-                self.called_seats,
-                "Comma-separated seats that called before hero.",
-            ),
-            (
-                "Bettor / raiser seat",
-                self.aggressor_seat,
-                "Seat responsible for the current amount to call, or None.",
-            ),
-            (
-                "Current actor seat",
-                self.current_actor_seat,
-                "Use Hero for analysis; another seat can be represented but must act first.",
-            ),
+
+        table_group = self.qtwidgets.QGroupBox("Table")
+        table_layout = self.qtwidgets.QFormLayout(table_group)
+        table_layout.addRow("Active players", self.players)
+        table_layout.addRow("Hero position", self.position)
+        table_layout.addRow("Small blind", self.small_blind)
+        table_layout.addRow("Big blind", self.big_blind)
+        table_layout.addRow("Ante", self.ante)
+        table_helper = self.qtwidgets.QLabel(
+            "Seats, position, and blind structure for the current hand."
         )
-        for label, widget, tooltip in setup_rows:
-            widget.setToolTip(tooltip)
-            game.addRow(label, widget)
-        game.addRow("Analysis mode", self.auto_analysis)
-        game.addRow("Advanced table", self.advanced_opponents)
-        game.addRow("Order", self.action_order_label)
-        outer.addWidget(game_group)
+        table_helper.setObjectName("groupHelper")
+        table_layout.addRow("", table_helper)
+        outer.addWidget(table_group)
+
+        money_group = self.qtwidgets.QGroupBox("Money")
+        money_layout = self.qtwidgets.QFormLayout(money_group)
+        money_layout.addRow("Current pot", self.pot)
+        money_layout.addRow("Amount to call", self.call)
+        money_layout.addRow("Hero stack", self.stack)
+        money_layout.addRow("Effective stack", self.effective)
+        money_helper = self.qtwidgets.QLabel(
+            "Chips and effective investment for the current decision."
+        )
+        money_helper.setObjectName("groupHelper")
+        money_layout.addRow("", money_helper)
+        outer.addWidget(money_group)
+
+        action_group = self.qtwidgets.QGroupBox("Action so far")
+        action_layout = self.qtwidgets.QFormLayout(action_group)
+        action_layout.addRow("Previous action", self.previous_action)
+        action_layout.addRow("Bettor / raiser seat", self.aggressor_seat)
+        action_layout.addRow("Current actor seat", self.current_actor_seat)
+        action_layout.addRow("Folded seat numbers", self.folded_seats)
+        action_layout.addRow("Called seat numbers", self.called_seats)
+        action_layout.addRow("Players behind hero", self.players_behind)
+        action_helper = self.qtwidgets.QLabel("Opponent activity and action order before hero.")
+        action_helper.setObjectName("groupHelper")
+        action_layout.addRow("", action_helper)
+        outer.addWidget(action_group)
+
+        opponent_group = self.qtwidgets.QGroupBox("Opponent model")
+        opponent_layout = self.qtwidgets.QFormLayout(opponent_group)
+        opponent_layout.addRow("Opponent range", self.range_combo)
+        opponent_layout.addRow("Opponent profile", self.profile_combo)
+        opponent_helper = self.qtwidgets.QLabel(
+            "Assumptions that shape opponent behavior in the analysis."
+        )
+        opponent_helper.setObjectName("groupHelper")
+        opponent_layout.addRow("", opponent_helper)
+        outer.addWidget(opponent_group)
+
+        analysis_group = self.qtwidgets.QGroupBox("Analysis settings")
+        analysis_layout = self.qtwidgets.QFormLayout(analysis_group)
+        analysis_layout.addRow("Simulation accuracy", self.preset_combo)
+        analysis_layout.addRow("Action-aware accuracy", self.action_preset_combo)
+        analysis_layout.addRow("Analysis mode", self.auto_analysis)
+        analysis_helper = self.qtwidgets.QLabel(
+            "Controls how the analysis is computed and refreshed."
+        )
+        analysis_helper.setObjectName("groupHelper")
+        analysis_layout.addRow("", analysis_helper)
+        outer.addWidget(analysis_group)
+
+        self.advanced_opponents = self.qtwidgets.QPushButton("Edit individual opponents")
+        self.action_order_label = self.qtwidgets.QLabel("Action order: calculating...")
+        self.action_order_label.setWordWrap(True)
+        self.advanced_opponents.setToolTip("Open the advanced opponent editor.")
+        self.action_order_label.setToolTip("Current inferred action order.")
+        footer_row = self.qtwidgets.QHBoxLayout()
+        footer_row.addWidget(self.advanced_opponents)
+        footer_row.addStretch(1)
+        footer_row.addWidget(self.action_order_label)
+        outer.addLayout(footer_row)
 
         cards_group = self.qtwidgets.QGroupBox("Cards")
         cards = self.qtwidgets.QFormLayout(cards_group)
@@ -266,8 +487,10 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
     def _results_panel(self) -> Any:
         panel = self.qtwidgets.QWidget()
         layout = self.qtwidgets.QVBoxLayout(panel)
+        layout.setSpacing(12)
         self.status_label = self.qtwidgets.QLabel("Ready")
         self.status_label.setWordWrap(True)
+        self.status_label.setObjectName("statusPill")
         self.progress = self.qtwidgets.QProgressBar()
         self.progress.setRange(0, 1)
         self.progress.setValue(0)
@@ -326,36 +549,48 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
         return panel
 
     def _button_grid(self) -> Any:
-        grid = self.qtwidgets.QGridLayout()
+        bar = self.qtwidgets.QHBoxLayout()
+        bar.setSpacing(12)
+
+        primary_group = self.qtwidgets.QHBoxLayout()
         self.analyze_button = self._button("Analyze", "Alt+A", "Run the complete analysis.")
         self.analyze_button.setObjectName("primaryButton")
+        primary_group.addWidget(self.analyze_button)
+        bar.addLayout(primary_group)
+
+        flow_group = self.qtwidgets.QHBoxLayout()
         self.cancel_button = self._button("Cancel", "Esc", "Cancel the active calculation.")
         self.clear_button = self._button(
             "Clear street", "", "Clear the latest entered board street."
         )
         self.new_button = self._button("New hand", "Ctrl+N", "Clear cards and analysis results.")
+        flow_group.addWidget(self.cancel_button)
+        flow_group.addWidget(self.clear_button)
+        flow_group.addWidget(self.new_button)
+        bar.addLayout(flow_group)
+
+        file_group = self.qtwidgets.QHBoxLayout()
         self.save_button = self._button("Save", "Ctrl+S", "Save the current hand as JSON.")
         self.load_button = self._button("Load", "Ctrl+O", "Load a saved Peaceful Poker hand.")
         self.export_button = self._button("Export", "Ctrl+E", "Export the latest analysis.")
+        file_group.addWidget(self.save_button)
+        file_group.addWidget(self.load_button)
+        file_group.addWidget(self.export_button)
+        bar.addLayout(file_group)
+
+        bar.addStretch(1)
+
+        utility_group = self.qtwidgets.QHBoxLayout()
         self.settings_button = self._button("Settings", "", "Change theme and analysis defaults.")
         self.training_button = self._button("Training", "", "Load a generated practice scenario.")
         self.about_button = self._button(
             "Help / About", "F1", "Show application and limitation information."
         )
-        buttons = (
-            self.analyze_button,
-            self.cancel_button,
-            self.clear_button,
-            self.new_button,
-            self.save_button,
-            self.load_button,
-            self.export_button,
-            self.settings_button,
-            self.training_button,
-            self.about_button,
-        )
-        for index, button in enumerate(buttons):
-            grid.addWidget(button, index // 5, index % 5)
+        utility_group.addWidget(self.settings_button)
+        utility_group.addWidget(self.training_button)
+        utility_group.addWidget(self.about_button)
+        bar.addLayout(utility_group)
+
         self.analyze_button.clicked.connect(self.analyze)
         self.cancel_button.clicked.connect(self.cancel)
         self.clear_button.clicked.connect(self.clear_current_street)
@@ -366,7 +601,7 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
         self.settings_button.clicked.connect(self.settings_dialog)
         self.training_button.clicked.connect(self.training)
         self.about_button.clicked.connect(self.about)
-        return grid
+        return bar
 
     def _button(self, text: str, shortcut: str, tooltip: str) -> Any:
         button = self.qtwidgets.QPushButton(text)
@@ -381,7 +616,45 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
         spin.setDecimals(2)
         spin.setValue(value)
         spin.setSuffix(" chips")
+        spin.setButtonSymbols(self.qtwidgets.QAbstractSpinBox.UpDownArrows)
+        spin.setStyleSheet(
+            "QAbstractSpinBox::up-button, QAbstractSpinBox::down-button {"
+            " width: 20px; height: 20px; }"
+            "QAbstractSpinBox::up-arrow, QAbstractSpinBox::down-arrow {"
+            " width: 10px; height: 10px; }"
+        )
         return spin
+
+    def _stack_control(self, value: float) -> tuple[Any, Any]:
+        spin = self.qtwidgets.QDoubleSpinBox()
+        spin.setRange(0.0, 1_000_000.0)
+        spin.setDecimals(2)
+        spin.setSingleStep(1.0)
+        spin.setValue(value)
+        spin.setSuffix(" chips")
+        spin.setButtonSymbols(self.qtwidgets.QAbstractSpinBox.NoButtons)
+        spin.setFixedWidth(120)
+
+        decrease_button = self.qtwidgets.QToolButton()
+        decrease_button.setText("-")
+        decrease_button.setFixedSize(26, 26)
+        decrease_button.setCursor(self.qtcore.Qt.CursorShape.PointingHandCursor)
+        decrease_button.clicked.connect(lambda _, s=spin: s.stepDown())
+
+        increase_button = self.qtwidgets.QToolButton()
+        increase_button.setText("+")
+        increase_button.setFixedSize(26, 26)
+        increase_button.setCursor(self.qtcore.Qt.CursorShape.PointingHandCursor)
+        increase_button.clicked.connect(lambda _, s=spin: s.stepUp())
+
+        container = self.qtwidgets.QWidget()
+        layout = self.qtwidgets.QHBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(2)
+        layout.addWidget(decrease_button)
+        layout.addWidget(spin)
+        layout.addWidget(increase_button)
+        return container, spin
 
     def _connect_inputs(self) -> None:
         for widget in (
@@ -762,6 +1035,43 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
         dialog = self.qtwidgets.QDialog(self.window)
         dialog.setWindowTitle("Advanced opponent editor")
         layout = self.qtwidgets.QVBoxLayout(dialog)
+        explanation = self.qtwidgets.QLabel(
+            "Range selects the opponent hand distribution assumption. "
+            "Previous selects the opponent's most recent action before hero."
+        )
+        explanation.setWordWrap(True)
+        layout.addWidget(explanation)
+
+        column_info = [
+            ("Seat", "Zero-based seat number at the table."),
+            ("Position", "Opponent table position for this round."),
+            ("Folded", "Whether this opponent has folded and is no longer in the pot."),
+            ("All-in", "Whether this opponent has committed their entire stack."),
+            ("Stack", "Remaining chips available to this opponent before the decision."),
+            ("Profile", "Behavioral profile that guides opponent decision making."),
+            ("Range", "Estimated opponent hand range assumption for the current situation."),
+            ("Previous", "Most recent action the opponent took before hero's turn."),
+        ]
+        info_row = self.qtwidgets.QHBoxLayout()
+        info_row.setContentsMargins(0, 0, 0, 0)
+        info_row.setSpacing(8)
+        for title, description in column_info:
+            info_button = self.qtwidgets.QToolButton()
+            info_button.setText("i")
+            info_button.setFixedSize(22, 22)
+            info_button.setToolTip(description)
+            info_button.setCursor(self.qtcore.Qt.CursorShape.PointingHandCursor)
+            info_button.clicked.connect(
+                partial(
+                    self.qtwidgets.QMessageBox.information,
+                    dialog,
+                    title,
+                    description,
+                )
+            )
+            info_row.addWidget(info_button)
+        layout.addLayout(info_row)
+
         editor = self.qtwidgets.QTableWidget(len(table_state.players), 8)
         editor.setHorizontalHeaderLabels(
             ["Seat", "Position", "Folded", "All-in", "Stack", "Profile", "Range", "Previous"]
@@ -771,32 +1081,52 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
             seat_item = self.qtwidgets.QTableWidgetItem(str(player.seat))
             seat_item.setFlags(seat_item.flags() & ~self.qtcore.Qt.ItemFlag.ItemIsEditable)
             editor.setItem(row, 0, seat_item)
-            position_item = self.qtwidgets.QTableWidgetItem(player.position)
-            editor.setItem(row, 1, position_item)
+            position_combo = self.qtwidgets.QComboBox()
+            for position_option in Position:
+                position_combo.addItem(position_option.display_name, position_option.value)
+            position_combo.setCurrentIndex(position_combo.findData(player.position))
+            position_combo.setToolTip("Select the opponent's table position.")
             folded = self.qtwidgets.QCheckBox()
             folded.setChecked(player.folded)
+            folded.setFocusPolicy(self.qtcore.Qt.FocusPolicy.StrongFocus)
             all_in = self.qtwidgets.QCheckBox()
             all_in.setChecked(player.all_in)
-            stack = self._money_spin(player.stack)
+            all_in.setFocusPolicy(self.qtcore.Qt.FocusPolicy.StrongFocus)
+            stack_widget, stack = self._stack_control(player.stack)
             profile = self.qtwidgets.QComboBox()
             for option in OpponentProfile:
                 profile.addItem(option.display_name, option.value)
             profile.setCurrentIndex(profile.findData(player.profile.value))
-            range_edit = self.qtwidgets.QLineEdit(player.range_text)
-            previous = self.qtwidgets.QLineEdit(", ".join(player.previous_actions))
+            range_edit = self.qtwidgets.QComboBox()
+            range_edit.setEditable(True)
+            range_edit.addItems(list(_RANGE_OPTIONS))
+            range_edit.setCurrentText(player.range_text or "random")
+            range_edit.setToolTip("Select or enter an opponent range.")
+            previous = self.qtwidgets.QComboBox()
+            previous.addItems(list(_PREVIOUS_ACTION_OPTIONS))
+            action_text = (
+                ", ".join(player.previous_actions)
+                if player.previous_actions
+                else "None"
+            )
+            previous.setCurrentText(action_text)
+            previous.setToolTip("Select the opponent's most recent action before hero.")
             if player.is_hero:
                 folded.setEnabled(False)
                 all_in.setEnabled(False)
                 profile.setEnabled(False)
                 range_edit.setEnabled(False)
+                position_combo.setEnabled(False)
+                previous.setEnabled(False)
+            editor.setCellWidget(row, 1, position_combo)
             editor.setCellWidget(row, 2, folded)
             editor.setCellWidget(row, 3, all_in)
-            editor.setCellWidget(row, 4, stack)
+            editor.setCellWidget(row, 4, stack_widget)
             editor.setCellWidget(row, 5, profile)
             editor.setCellWidget(row, 6, range_edit)
             editor.setCellWidget(row, 7, previous)
             controls[player.seat] = (
-                position_item,
+                position_combo,
                 folded,
                 all_in,
                 stack,
@@ -828,22 +1158,21 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
         for player in table_state.players:
             if player.is_hero:
                 continue
-            position_item, folded, all_in, stack, profile, range_edit, previous = controls[
+            position_combo, folded, all_in, stack, profile, range_edit, previous = controls[
                 player.seat
             ]
             is_folded = folded.isChecked()
             is_all_in = all_in.isChecked() and not is_folded
-            actions = tuple(
-                action.strip() for action in previous.text().split(",") if action.strip()
-            )
+            previous_text = previous.currentText().strip()
+            actions = () if previous_text in ("", "None") else (previous_text,)
             overrides[player.seat] = replace(
                 player,
-                position=position_item.text().strip() or player.position,
+                position=str(position_combo.currentData()) or player.position,
                 folded=is_folded,
                 all_in=is_all_in,
                 stack=0.0 if is_all_in else float(stack.value()),
                 profile=OpponentProfile(str(profile.currentData())),
-                range_text=range_edit.text().strip() or "random",
+                range_text=range_edit.currentText().strip() or "random",
                 previous_actions=actions,
                 eligible_to_act=not is_folded and not is_all_in,
                 acted_this_round=bool(actions),
@@ -1130,6 +1459,8 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
             stylesheet = path.read_text(encoding="utf-8")
         except OSError:
             stylesheet = ""
+        for name, value in _THEME_TOKENS.get(selected, {}).items():
+            stylesheet = stylesheet.replace(f"__{name.upper()}__", value)
         self.window.setStyleSheet(stylesheet)
 
     def _populate_probability_table(self, result: AnalysisResult) -> None:
