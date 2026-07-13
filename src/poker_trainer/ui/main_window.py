@@ -42,17 +42,17 @@ _EMPTY_RESULT = "Enter two hero cards and a valid board, then choose Analyze."
 
 _THEME_TOKENS = {
     "dark": {
-        "bg_app": "#0B1120",
-        "bg_surface": "#121A2B",
-        "bg_surface_raised": "#182338",
-        "border_subtle": "#232E45",
-        "accent_primary": "#2FE6B3",
-        "accent_secondary": "#4C8DFF",
+        "bg_app": "qradialgradient(cx:0.2, cy:0.12, radius:1, stop:0 #0d111c, stop:1 #080a10)",
+        "bg_surface": "rgba(14,24,45,0.72)",
+        "bg_surface_raised": "rgba(24,35,56,0.8)",
+        "border_subtle": "rgba(255,255,255,0.06)",
+        "accent_primary": "#7a8bff",
+        "accent_secondary": "#68d1ff",
         "accent_warning": "#F5A623",
         "accent_negative": "#FF5C6C",
-        "text_primary": "#EAF0FA",
-        "text_secondary": "#8C97AF",
-        "text_disabled": "#4B5568",
+        "text_primary": "#f5f7ff",
+        "text_secondary": "#99adcc",
+        "text_disabled": "#7280a0",
     },
     "light": {
         "bg_app": "#F3F5F7",
@@ -157,6 +157,22 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
         vcenter = self.qtcore.Qt.AlignmentFlag.AlignVCenter
         title.setAlignment(left | vcenter)
         bar.addWidget(title)
+        
+        # Menu toggle (retractable sidebar)
+        self.menu_toggle = self.qtwidgets.QToolButton()
+        self.menu_toggle.setObjectName("menuToggle")
+        self.menu_toggle.setText("☰")
+        self.menu_toggle.setToolTip("Show / hide navigation sidebar")
+        self.menu_toggle.clicked.connect(self._toggle_sidebar)
+        bar.addWidget(self.menu_toggle)
+
+        # Back to landing page action
+        self.back_to_landing = self.qtwidgets.QToolButton()
+        self.back_to_landing.setObjectName("backToLanding")
+        self.back_to_landing.setText("Back")
+        self.back_to_landing.setToolTip("Return to the landing page")
+        self.back_to_landing.clicked.connect(self._show_landing)
+        bar.addWidget(self.back_to_landing)
 
         bar.addStretch(1)
 
@@ -172,87 +188,64 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
         return bar
 
     def _build_landing_page(self) -> Any:
+        """Minimal landing page shown on startup.
+
+        This is intentionally lightweight; the full UI appears when
+        the user navigates into the main area.
+        """
         page = self.qtwidgets.QWidget()
-        page.setObjectName("landingPage")
         layout = self.qtwidgets.QVBoxLayout(page)
         layout.setContentsMargins(24, 24, 24, 24)
-        layout.setSpacing(24)
-
-        layout.addStretch(1)
-
-        title = self.qtwidgets.QLabel("Peaceful Poker")
+        title = self.qtwidgets.QLabel("Welcome to Peaceful Poker")
         title.setObjectName("landingTitle")
         title.setAlignment(self.qtcore.Qt.AlignmentFlag.AlignCenter)
+        title.setStyleSheet("font-size:20px; font-weight:700;")
+        layout.addStretch(1)
         layout.addWidget(title)
 
-        subtitle = self.qtwidgets.QLabel(
-            "A calm Texas Hold'em trainer for smarter decisions and clearer play."
-        )
-        subtitle.setObjectName("landingSubtitle")
-        subtitle.setAlignment(self.qtcore.Qt.AlignmentFlag.AlignCenter)
-        subtitle.setWordWrap(True)
-        layout.addWidget(subtitle)
-
-        button_group = self.qtwidgets.QVBoxLayout()
-        button_group.setSpacing(12)
-
-        start_button = self.qtwidgets.QPushButton("Start analysis")
-        start_button.setObjectName("landingButton")
-        start_button.clicked.connect(self._show_main_ui)
-        button_group.addWidget(start_button)
-
-        load_button = self.qtwidgets.QPushButton("Load saved hand")
-        load_button.setObjectName("landingButton")
-        load_button.clicked.connect(lambda: (self._show_main_ui(), self.load()))
-        button_group.addWidget(load_button)
-
-        settings_button = self.qtwidgets.QPushButton("Open settings")
-        settings_button.setObjectName("landingButton")
-        settings_button.clicked.connect(lambda: (self._show_main_ui(), self.settings_dialog()))
-        button_group.addWidget(settings_button)
-
-        training_button = self.qtwidgets.QPushButton("Training mode")
-        training_button.setObjectName("landingButton")
-        training_button.clicked.connect(lambda: (self._show_main_ui(), self.training()))
-        button_group.addWidget(training_button)
-
-        button_container = self.qtwidgets.QWidget()
-        button_container.setLayout(button_group)
-        layout.addWidget(button_container)
+        # Add a clear "Get Started" button so users can enter the main UI
+        enter = self.qtwidgets.QPushButton("Get Started")
+        enter.setObjectName("landingEnter")
+        enter.setToolTip("Open the main application")
+        enter.setFixedWidth(180)
+        enter.setCursor(self.qtcore.Qt.CursorShape.PointingHandCursor)
+        enter.clicked.connect(self._show_main_area)
+        layout.addWidget(enter, 0, self.qtcore.Qt.AlignmentFlag.AlignHCenter)
 
         layout.addStretch(2)
-
         return page
 
     def _build_main_area(self) -> Any:
-        main = self.qtwidgets.QWidget()
-        main.setObjectName("mainArea")
-        main_layout = self.qtwidgets.QVBoxLayout(main)
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(12)
+        """Construct the primary application area (sidebar + content columns)."""
+        container = self.qtwidgets.QWidget()
+        layout = self.qtwidgets.QHBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(12)
 
-        body = self.qtwidgets.QHBoxLayout()
-        body.setSpacing(12)
-        body.addWidget(self._build_sidebar())
+        # Sidebar (left)
+        sidebar = self._build_sidebar()
+        self.sidebar_widget = sidebar
+        layout.addWidget(sidebar)
 
-        splitter = self.qtwidgets.QSplitter(self.qtcore.Qt.Orientation.Horizontal)
-        splitter.addWidget(self._setup_panel())
-        splitter.addWidget(self._results_panel())
-        splitter.setSizes([430, 720])
-        splitter.setStretchFactor(1, 1)
-        body.addWidget(splitter, 1)
+        # Main content (right): inputs + results
+        right = self.qtwidgets.QWidget()
+        rlayout = self.qtwidgets.QVBoxLayout(right)
+        rlayout.setContentsMargins(0, 0, 0, 0)
+        # Button bar
+        rlayout.addLayout(self._button_grid())
+        # Panels
+        panels = self.qtwidgets.QHBoxLayout()
+        panels.addWidget(self._setup_panel(), 1)
+        panels.addWidget(self._results_panel(), 1)
+        rlayout.addLayout(panels)
 
-        main_layout.addLayout(body, 1)
-        main_layout.addLayout(self._button_grid())
-
-        return main
-
-    def _show_main_ui(self) -> None:
-        self._landing_page.hide()
-        self._main_area.show()
+        layout.addWidget(right, 1)
+        return container
 
     def _build_sidebar(self) -> Any:
         panel = self.qtwidgets.QFrame()
+        # expose sidebar widget so header toggle can show/hide it
+        self.sidebar_widget = panel
         panel.setObjectName("sidebar")
         panel.setMinimumWidth(220)
         panel.setMaximumWidth(260)
@@ -273,7 +266,7 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
         layout.addSpacing(8)
 
         home_button = self.qtwidgets.QPushButton("Home")
-        home_button.clicked.connect(lambda: None)
+        home_button.clicked.connect(self._show_landing)
         home_button.setObjectName("sidebarNav")
         home_button.setCheckable(True)
         home_button.setChecked(True)
@@ -309,6 +302,8 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
         footer.setAlignment(self.qtcore.Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(footer)
 
+        # expose the sidebar widget for toggle/hide behavior
+        self.sidebar_widget = panel
         return panel
 
     def _toggle_theme(self) -> None:
@@ -464,16 +459,14 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
             edit.setToolTip(f"Enter {slot.lower()} as AS, TH, or 10H.")
             pick = self.qtwidgets.QPushButton("Pick")
             pick.setToolTip(f"Choose {slot.lower()} from the deck.")
-            clear = self.qtwidgets.QToolButton()
-            clear.setText("X")
-            clear.setToolTip(f"Clear {slot.lower()}.")
-            clear.setAccessibleName(f"Clear {slot}")
             pick.clicked.connect(lambda _checked=False, field=edit: self._pick_card(field))
-            clear.clicked.connect(lambda _checked=False, field=edit: field.clear())
             row.addWidget(edit, 1)
             row.addWidget(pick)
-            row.addWidget(clear)
-            cards.addRow(slot, row)
+            # Use a QLabel for the form label to avoid automatic eliding/cropping
+            label = self.qtwidgets.QLabel(slot)
+            label.setMinimumWidth(110)
+            label.setObjectName("cardLabel")
+            cards.addRow(label, row)
             self.card_edits.append(edit)
         outer.addWidget(cards_group)
         outer.addStretch(1)
@@ -1461,7 +1454,57 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
             stylesheet = ""
         for name, value in _THEME_TOKENS.get(selected, {}).items():
             stylesheet = stylesheet.replace(f"__{name.upper()}__", value)
+        # Apply the resolved stylesheet and write a debug copy so it's easy to verify
+        try:
+            debug_path = "/tmp/peaceful_poker_applied.qss"
+            with open(debug_path, "w", encoding="utf-8") as f:
+                f.write(stylesheet)
+            print(f"[DEBUG] Written resolved stylesheet to: {debug_path}")
+        except Exception:
+            pass
         self.window.setStyleSheet(stylesheet)
+
+    def _toggle_sidebar(self) -> None:
+        """Show or hide the navigation sidebar.
+
+        If the app is currently showing the landing page, open the main area
+        so the user can interact with the primary controls.
+        """
+        # If we're still on the landing page, show the main area first
+        if hasattr(self, "_landing_page") and hasattr(self, "_main_area") and self._main_area.isHidden():
+            try:
+                self._landing_page.hide()
+                self._main_area.show()
+            except Exception:
+                pass
+            # Ensure the sidebar is visible when opening the main area
+            sidebar = getattr(self, "sidebar_widget", None)
+            if sidebar is not None and not sidebar.isVisible():
+                sidebar.show()
+            return
+
+        sidebar = getattr(self, "sidebar_widget", None)
+        if sidebar is None:
+            return
+        sidebar.setVisible(not sidebar.isVisible())
+
+    def _show_landing(self) -> None:
+        """Switch back to the landing page and hide the main area."""
+        if hasattr(self, "_landing_page") and hasattr(self, "_main_area"):
+            try:
+                self._main_area.hide()
+                self._landing_page.show()
+            except Exception:
+                pass
+
+    def _show_main_area(self) -> None:
+        """Open the primary UI area and hide the landing page."""
+        if hasattr(self, "_landing_page") and hasattr(self, "_main_area"):
+            try:
+                self._landing_page.hide()
+                self._main_area.show()
+            except Exception:
+                pass
 
     def _populate_probability_table(self, result: AnalysisResult) -> None:
         precision = self.settings.percentage_precision

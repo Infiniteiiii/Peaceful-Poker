@@ -20,7 +20,8 @@ QGroupBox {
 QGroupBox::title {
     subcontrol-origin: margin;
     left: 16px;
-    top: -10px;
+    /* reduce negative offset so titles aren't cropped */
+    top: -6px;
     padding: 0 4px;
 }
 QLabel#groupHelper,
@@ -136,4 +137,64 @@ QHeaderView::section {
 }
 QTableWidget {
     gridline-color: __BORDER_SUBTLE__;
+}
+
+/* Glass-like surfaces for light theme */
+QFrame#sidebar {
+    background: __BG_SURFACE__;
+    border: 1px solid rgba(16,24,35,0.04);
+    border-radius: 20px;
+    padding: 12px;
+}
+
+QWidget#panelCard, QGroupBox, QFrame {
+    background: __BG_SURFACE__;
+    border: 1px solid rgba(16,24,35,0.04);
+    border-radius: 16px;
+}
+
+QGroupBox::title {
+    background: rgba(0,0,0,0.02);
+    padding: 6px 10px;
+    border-radius: 10px;
+}
+
+QPushButton {
+    background: rgba(0,0,0,0.03);
+    color: __TEXT_PRIMARY__;
+    border: 1px solid rgba(16,24,35,0.06);
+    border-radius: 14px;
+    padding: 8px 14px;
+    min-height: 40px;
+}
+
+QPushButton#sidebarNav {
+    text-align: left;
+    padding-left: 12px;
+    border-radius: 12px;
+}
+
+QToolButton#menuToggle, QToolButton#backToLanding, QToolButton#themeToggle {
+    background: rgba(0,0,0,0.02);
+    border: 1px solid rgba(16,24,35,0.04);
+    border-radius: 12px;
+    padding: 6px 10px;
+}
+
+QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QTextEdit, QTableWidget {
+    background: __BG_SURFACE_RAISED__;
+    color: __TEXT_PRIMARY__;
+    border: 1px solid rgba(16,24,35,0.04);
+    border-radius: 12px;
+    padding: 8px;
+}
+
+QLabel#cardLabel {
+    color: __TEXT_PRIMARY__;
+    padding-right: 8px;
+    font-weight: 600;
+}
+
+QProgressBar::chunk {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 __ACCENT_PRIMARY__, stop:1 __ACCENT_SECONDARY__);
 }
