@@ -57,7 +57,6 @@ QPushButton:hover {
 }
 QPushButton:pressed {
     background: __BG_SURFACE_RAISED__;
-    transform: scale(0.99);
 }
 QPushButton:disabled {
     color: __TEXT_DISABLED__;

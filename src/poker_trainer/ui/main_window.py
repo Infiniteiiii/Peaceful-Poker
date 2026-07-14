@@ -44,7 +44,7 @@ _THEME_TOKENS = {
     "dark": {
         "bg_app": "qradialgradient(cx:0.2, cy:0.12, radius:1, stop:0 #0d111c, stop:1 #080a10)",
         "bg_surface": "rgba(14,24,45,0.72)",
-        "bg_surface_raised": "rgba(24,35,56,0.8)",
+        "bg_surface_raised": "#202326",
         "border_subtle": "rgba(255,255,255,0.06)",
         "accent_primary": "#7a8bff",
         "accent_secondary": "#68d1ff",
