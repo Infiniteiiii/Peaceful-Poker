@@ -157,7 +157,7 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
         vcenter = self.qtcore.Qt.AlignmentFlag.AlignVCenter
         title.setAlignment(left | vcenter)
         bar.addWidget(title)
-        
+
         # Menu toggle (retractable sidebar)
         self.menu_toggle = self.qtwidgets.QToolButton()
         self.menu_toggle.setObjectName("menuToggle")
@@ -294,7 +294,7 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
 
         layout.addStretch(1)
 
-        if hasattr(self.settings, 'app_version'):
+        if hasattr(self.settings, "app_version"):
             footer = self.qtwidgets.QLabel(f"Version {self.settings.app_version}")
         else:
             footer = self.qtwidgets.QLabel("Version 1.0")
@@ -308,6 +308,7 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
 
     def _toggle_theme(self) -> None:
         from contextlib import suppress
+
         new_theme = "dark" if self.theme_toggle.isChecked() else "light"
         self.settings = replace(self.settings, theme=new_theme)
         self.theme_toggle.setText("Dark" if self.settings.theme == "dark" else "Light")
@@ -1097,11 +1098,7 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
             range_edit.setToolTip("Select or enter an opponent range.")
             previous = self.qtwidgets.QComboBox()
             previous.addItems(list(_PREVIOUS_ACTION_OPTIONS))
-            action_text = (
-                ", ".join(player.previous_actions)
-                if player.previous_actions
-                else "None"
-            )
+            action_text = ", ".join(player.previous_actions) if player.previous_actions else "None"
             previous.setCurrentText(action_text)
             previous.setToolTip("Select the opponent's most recent action before hero.")
             if player.is_hero:
@@ -1471,7 +1468,11 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
         so the user can interact with the primary controls.
         """
         # If we're still on the landing page, show the main area first
-        if hasattr(self, "_landing_page") and hasattr(self, "_main_area") and self._main_area.isHidden():
+        if (
+            hasattr(self, "_landing_page")
+            and hasattr(self, "_main_area")
+            and self._main_area.isHidden()
+        ):
             try:
                 self._landing_page.hide()
                 self._main_area.show()
