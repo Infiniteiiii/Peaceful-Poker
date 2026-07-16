@@ -7,7 +7,6 @@ QWidget {
 QMainWindow#mainWindow {
     background: __BG_APP__;
 }
-QFrame#sidebar,
 QGroupBox,
 QWidget#panelCard {
     background: __BG_SURFACE__;
@@ -26,9 +25,7 @@ QGroupBox::title {
     top: -6px;
     padding: 0 4px;
 }
-QLabel#groupHelper,
-QLabel#sidebarFooter,
-QLabel#sidebarLabel {
+QLabel#groupHelper {
     color: __TEXT_SECONDARY__;
     font-size: 12px;
 }
@@ -36,14 +33,6 @@ QLabel#appTitle {
     color: __TEXT_PRIMARY__;
     font-weight: 700;
     font-size: 18px;
-}
-QWidget#sidebar {
-    background: __BG_SURFACE__;
-}
-QLabel#sidebarLogo {
-    font-size: 32px;
-    font-weight: 700;
-    color: __ACCENT_PRIMARY__;
 }
 QPushButton {
     background: __BG_SURFACE_RAISED__;
@@ -70,9 +59,6 @@ QPushButton#primaryButton {
     color: __TEXT_PRIMARY__;
     border-color: rgba(255,255,255,0.06);
     font-weight: 700;
-}
-QPushButton#sidebarNav {
-    text-align: left;
 }
 QToolButton#themeToggle {
     background: __BG_SURFACE__;
@@ -151,13 +137,6 @@ QTableWidget {
 }
 
 /* Glassmorphic enhancements */
-QFrame#sidebar {
-    background: rgba(14,24,45,0.72);
-    border: 1px solid rgba(255,255,255,0.04);
-    border-radius: 20px;
-    padding: 12px;
-}
-
 QWidget#panelCard, QGroupBox, QFrame {
     background: rgba(14,24,45,0.72);
     border: 1px solid rgba(255,255,255,0.04);
@@ -179,25 +158,17 @@ QPushButton {
     min-height: 40px;
 }
 
-QPushButton#sidebarNav {
-    text-align: left;
-    padding-left: 12px;
-    border-radius: 12px;
-}
-
-QToolButton#themeToggle {
-    background: rgba(255,255,255,0.02);
-    border: 1px solid rgba(255,255,255,0.04);
-    border-radius: 12px;
-    padding: 8px 12px;
-}
-
 QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QTextEdit, QTableWidget {
     background: rgba(255,255,255,0.02);
     color: __TEXT_PRIMARY__;
     border: 1px solid rgba(255,255,255,0.04);
     border-radius: 12px;
     padding: 8px;
+}
+
+QLabel#appTitle {
+    font-size: 20px;
+    font-weight: 700;
 }
 
 QLabel#cardLabel {
@@ -209,3 +180,97 @@ QLabel#cardLabel {
 QProgressBar::chunk {
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 __ACCENT_PRIMARY__, stop:1 __ACCENT_SECONDARY__);
 }
+
+/* Back button in header */
+QPushButton#headerBack {
+    background: rgba(255,255,255,0.04);
+    color: __TEXT_SECONDARY__;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 8px;
+    padding: 4px 12px;
+    min-height: 28px;
+    font-size: 12px;
+}
+QPushButton#headerBack:hover {
+    color: __TEXT_PRIMARY__;
+    border-color: __ACCENT_PRIMARY__;
+}
+
+/* ========== LANDING PAGE ========== */
+QWidget#landingPage {
+    background: __BG_APP__;
+}
+
+QWidget#landingHero {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 #080E1E, stop:0.6 #0B1223, stop:1 __BG_APP__);
+    border-bottom: 1px solid __BORDER_SUBTLE__;
+}
+
+QLabel#landingSuits {
+    color: __ACCENT_PRIMARY__;
+    font-size: 34px;
+    letter-spacing: 8px;
+}
+
+QLabel#landingTitle {
+    color: __TEXT_PRIMARY__;
+    font-size: 48px;
+    font-weight: 800;
+    letter-spacing: -1px;
+}
+
+QLabel#landingSubtitle {
+    color: __TEXT_SECONDARY__;
+    font-size: 16px;
+    font-weight: 400;
+}
+
+QPushButton#landingEnter {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+        stop:0 __ACCENT_PRIMARY__, stop:1 __ACCENT_SECONDARY__);
+    color: #FFFFFF;
+    border: none;
+    border-radius: 14px;
+    font-size: 16px;
+    font-weight: 700;
+    padding: 0 28px;
+}
+QPushButton#landingEnter:hover {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+        stop:0 __ACCENT_HOVER__, stop:1 __ACCENT_PRIMARY__);
+}
+QPushButton#landingEnter:pressed {
+    background: __ACCENT_PRIMARY__;
+}
+
+QFrame#landingDivider {
+    background: __BORDER_SUBTLE__;
+    border: none;
+}
+
+QWidget#landingFeatures {
+    background: __BG_SURFACE__;
+}
+
+QFrame#featureCard {
+    background: __BG_SURFACE_RAISED__;
+    border: 1px solid __BORDER_SUBTLE__;
+    border-radius: 14px;
+}
+
+QLabel#featureIcon {
+    font-size: 28px;
+}
+
+QLabel#featureTitle {
+    color: __TEXT_PRIMARY__;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+QLabel#featureBody {
+    color: __TEXT_SECONDARY__;
+    font-size: 12px;
+}
+

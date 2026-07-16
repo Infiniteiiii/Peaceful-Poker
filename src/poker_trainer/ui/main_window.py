@@ -42,30 +42,34 @@ _EMPTY_RESULT = "Enter two hero cards and a valid board, then choose Analyze."
 
 _THEME_TOKENS = {
     "dark": {
-        "bg_app": "qradialgradient(cx:0.2, cy:0.12, radius:1, stop:0 #0d111c, stop:1 #080a10)",
-        "bg_surface": "rgba(14,24,45,0.72)",
-        "bg_surface_raised": "#202326",
-        "border_subtle": "rgba(255,255,255,0.06)",
-        "accent_primary": "#7a8bff",
-        "accent_secondary": "#68d1ff",
+        "bg_app": "#0E1117",
+        "bg_surface": "#161B22",
+        "bg_surface_raised": "#1C2128",
+        "border_subtle": "#2A3441",
+        "border_focus": "#4F8CFF",
+        "accent_primary": "#4F8CFF",
+        "accent_hover": "#6CA3FF",
+        "accent_secondary": "#58A6FF",
         "accent_warning": "#F5A623",
         "accent_negative": "#FF5C6C",
-        "text_primary": "#f5f7ff",
-        "text_secondary": "#99adcc",
-        "text_disabled": "#7280a0",
+        "text_primary": "#F5F7FA",
+        "text_secondary": "#9AA5B1",
+        "text_disabled": "#6E7681",
     },
     "light": {
-        "bg_app": "#F3F5F7",
-        "bg_surface": "#FFFFFF",
-        "bg_surface_raised": "#F2F4F7",
-        "border_subtle": "#D3D8E0",
-        "accent_primary": "#2FE6B3",
-        "accent_secondary": "#4C8DFF",
-        "accent_warning": "#F5A623",
-        "accent_negative": "#FF5C6C",
-        "text_primary": "#1F2937",
-        "text_secondary": "#6B7280",
-        "text_disabled": "#9CA3AF",
+        "bg_app": "#F2F3F5",
+        "bg_surface": "#F8F9FA",
+        "bg_surface_raised": "#EDEEF1",
+        "border_subtle": "#CDD2D8",
+        "border_focus": "#4A7FE5",
+        "accent_primary": "#4A7FE5",
+        "accent_hover": "#5E90EE",
+        "accent_secondary": "#5E90EE",
+        "accent_warning": "#D4891A",
+        "accent_negative": "#D94F5C",
+        "text_primary": "#1A2030",
+        "text_secondary": "#5A6370",
+        "text_disabled": "#9AA0A8",
     },
 }
 
@@ -103,7 +107,7 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
         self.window.setWindowTitle("Peaceful Poker")
         self.window.setMinimumSize(900, 620)
         self.window.resize(1180, 760)
-        icon_path = resource_path("peaceful_poker.ico")
+        icon_path = resource_path("Logo.png")
         if qtgui is not None and icon_path.exists():
             self.window.setWindowIcon(qtgui.QIcon(str(icon_path)))
         self._auto_timer = qtcore.QTimer(self.window)
@@ -158,6 +162,14 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
         title.setAlignment(left | vcenter)
         bar.addWidget(title)
 
+        self.home_button = self.qtwidgets.QPushButton("\u2190 Back")
+        self.home_button.setObjectName("headerBack")
+        self.home_button.setToolTip("Return to the welcome screen")
+        self.home_button.setCursor(self.qtcore.Qt.CursorShape.PointingHandCursor)
+        self.home_button.clicked.connect(self._show_landing)
+        self.home_button.hide()
+        bar.addWidget(self.home_button)
+
         bar.addStretch(1)
 
         self.theme_toggle = self.qtwidgets.QToolButton()
@@ -172,123 +184,113 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
         return bar
 
     def _build_landing_page(self) -> Any:
-        """Minimal landing page shown on startup.
-
-        This is intentionally lightweight; the full UI appears when
-        the user navigates into the main area.
-        """
+        """Poker-themed landing page with hero section and feature cards."""
         page = self.qtwidgets.QWidget()
-        layout = self.qtwidgets.QVBoxLayout(page)
-        layout.setContentsMargins(24, 24, 24, 24)
-        title = self.qtwidgets.QLabel("Welcome to Peaceful Poker")
+        page.setObjectName("landingPage")
+        outer = self.qtwidgets.QVBoxLayout(page)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        # Hero
+        hero = self.qtwidgets.QWidget()
+        hero.setObjectName("landingHero")
+        hero_layout = self.qtwidgets.QVBoxLayout(hero)
+        hero_layout.setContentsMargins(48, 60, 48, 52)
+        hero_layout.setSpacing(0)
+        hero_layout.addStretch(1)
+
+        suits = self.qtwidgets.QLabel("\u2660  \u2665  \u2666  \u2663")
+        suits.setObjectName("landingSuits")
+        suits.setAlignment(self.qtcore.Qt.AlignmentFlag.AlignCenter)
+        hero_layout.addWidget(suits)
+        hero_layout.addSpacing(16)
+
+        title = self.qtwidgets.QLabel("Peaceful Poker")
         title.setObjectName("landingTitle")
         title.setAlignment(self.qtcore.Qt.AlignmentFlag.AlignCenter)
-        title.setStyleSheet("font-size:20px; font-weight:700;")
-        layout.addStretch(1)
-        layout.addWidget(title)
+        hero_layout.addWidget(title)
+        hero_layout.addSpacing(12)
 
-        # Add a clear "Get Started" button so users can enter the main UI
-        enter = self.qtwidgets.QPushButton("Get Started")
+        subtitle = self.qtwidgets.QLabel(
+            "Your personal No-Limit Hold\u2019em trainer and equity analyzer."
+        )
+        subtitle.setObjectName("landingSubtitle")
+        subtitle.setAlignment(self.qtcore.Qt.AlignmentFlag.AlignCenter)
+        subtitle.setWordWrap(True)
+        hero_layout.addWidget(subtitle)
+        hero_layout.addSpacing(36)
+
+        enter = self.qtwidgets.QPushButton("Get Started  \u2192")
         enter.setObjectName("landingEnter")
         enter.setToolTip("Open the main application")
-        enter.setFixedWidth(180)
+        enter.setFixedWidth(220)
+        enter.setFixedHeight(52)
         enter.setCursor(self.qtcore.Qt.CursorShape.PointingHandCursor)
         enter.clicked.connect(self._show_main_area)
-        layout.addWidget(enter, 0, self.qtcore.Qt.AlignmentFlag.AlignHCenter)
+        hero_layout.addWidget(enter, 0, self.qtcore.Qt.AlignmentFlag.AlignHCenter)
+        hero_layout.addStretch(1)
+        outer.addWidget(hero, 2)
 
-        layout.addStretch(2)
+        # Divider
+        div = self.qtwidgets.QFrame()
+        div.setObjectName("landingDivider")
+        div.setFixedHeight(1)
+        outer.addWidget(div)
+
+        # Feature strip
+        feat_widget = self.qtwidgets.QWidget()
+        feat_widget.setObjectName("landingFeatures")
+        feat_layout = self.qtwidgets.QHBoxLayout(feat_widget)
+        feat_layout.setContentsMargins(48, 28, 48, 36)
+        feat_layout.setSpacing(20)
+
+        for icon, feat_title, feat_body in [
+            ("\U0001f4ca", "Equity Analysis",
+             "Monte Carlo simulation across any number of players."),
+            ("\U0001f9e0", "Action-Aware EV",
+             "Model opponent fold/call/raise frequencies for real EV."),
+            ("\U0001f3af", "Training Mode",
+             "Practice decisions on generated scenarios with feedback."),
+        ]:
+            card = self.qtwidgets.QFrame()
+            card.setObjectName("featureCard")
+            cl = self.qtwidgets.QVBoxLayout(card)
+            cl.setContentsMargins(20, 20, 20, 20)
+            cl.setSpacing(8)
+            il = self.qtwidgets.QLabel(icon)
+            il.setObjectName("featureIcon")
+            il.setAlignment(self.qtcore.Qt.AlignmentFlag.AlignCenter)
+            cl.addWidget(il)
+            tl = self.qtwidgets.QLabel(feat_title)
+            tl.setObjectName("featureTitle")
+            tl.setAlignment(self.qtcore.Qt.AlignmentFlag.AlignCenter)
+            cl.addWidget(tl)
+            bl = self.qtwidgets.QLabel(feat_body)
+            bl.setObjectName("featureBody")
+            bl.setAlignment(self.qtcore.Qt.AlignmentFlag.AlignCenter)
+            bl.setWordWrap(True)
+            cl.addWidget(bl)
+            feat_layout.addWidget(card)
+
+        outer.addWidget(feat_widget, 1)
         return page
 
     def _build_main_area(self) -> Any:
-        """Construct the primary application area (sidebar + content columns)."""
+        """Construct the primary application area (no sidebar)."""
         container = self.qtwidgets.QWidget()
-        layout = self.qtwidgets.QHBoxLayout(container)
+        layout = self.qtwidgets.QVBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(12)
-
-        # Sidebar (left)
-        sidebar = self._build_sidebar()
-        self.sidebar_widget = sidebar
-        layout.addWidget(sidebar)
-
-        # Main content (right): inputs + results
-        right = self.qtwidgets.QWidget()
-        rlayout = self.qtwidgets.QVBoxLayout(right)
-        rlayout.setContentsMargins(0, 0, 0, 0)
-        # Button bar
-        rlayout.addLayout(self._button_grid())
-        # Panels
+        self.sidebar_widget = None
+        layout.addLayout(self._button_grid())
         panels = self.qtwidgets.QHBoxLayout()
         panels.addWidget(self._setup_panel(), 1)
         panels.addWidget(self._results_panel(), 1)
-        rlayout.addLayout(panels)
-
-        layout.addWidget(right, 1)
+        layout.addLayout(panels)
         return container
 
-    def _build_sidebar(self) -> Any:
-        panel = self.qtwidgets.QFrame()
-        # expose sidebar widget so header toggle can show/hide it
-        self.sidebar_widget = panel
-        panel.setObjectName("sidebar")
-        panel.setMinimumWidth(220)
-        panel.setMaximumWidth(260)
-        layout = self.qtwidgets.QVBoxLayout(panel)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(12)
-
-        logo = self.qtwidgets.QLabel("PP")
-        logo.setObjectName("sidebarLogo")
-        logo.setAlignment(self.qtcore.Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(logo)
-
-        app_label = self.qtwidgets.QLabel("Peaceful Poker")
-        app_label.setObjectName("sidebarLabel")
-        app_label.setAlignment(self.qtcore.Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(app_label)
-
-        layout.addSpacing(8)
-
-        home_button = self.qtwidgets.QPushButton("Home")
-        home_button.clicked.connect(self._show_landing)
-        home_button.setObjectName("sidebarNav")
-        home_button.setCheckable(True)
-        home_button.setChecked(True)
-        layout.addWidget(home_button)
-
-        saved_button = self.qtwidgets.QPushButton("Saved Hands")
-        saved_button.setObjectName("sidebarNav")
-        saved_button.clicked.connect(self.load)
-        layout.addWidget(saved_button)
-
-        training_nav = self.qtwidgets.QPushButton("Training")
-        training_nav.setObjectName("sidebarNav")
-        training_nav.clicked.connect(self.training)
-        layout.addWidget(training_nav)
-
-        settings_nav = self.qtwidgets.QPushButton("Settings")
-        settings_nav.setObjectName("sidebarNav")
-        settings_nav.clicked.connect(self.settings_dialog)
-        layout.addWidget(settings_nav)
-
-        help_nav = self.qtwidgets.QPushButton("Help / About")
-        help_nav.setObjectName("sidebarNav")
-        help_nav.clicked.connect(self.about)
-        layout.addWidget(help_nav)
-
-        layout.addStretch(1)
-
-        if hasattr(self.settings, "app_version"):
-            footer = self.qtwidgets.QLabel(f"Version {self.settings.app_version}")
-        else:
-            footer = self.qtwidgets.QLabel("Version 1.0")
-        footer.setObjectName("sidebarFooter")
-        footer.setAlignment(self.qtcore.Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(footer)
-
-        # expose the sidebar widget for toggle/hide behavior
-        self.sidebar_widget = panel
-        return panel
+    def _build_sidebar(self) -> Any:  # kept for API compatibility
+        return self.qtwidgets.QFrame()
 
     def _toggle_theme(self) -> None:
         from contextlib import suppress
@@ -306,9 +308,9 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
         outer.setSpacing(16)
         outer.setContentsMargins(0, 0, 0, 0)
 
-        self.players = self.qtwidgets.QSpinBox()
-        self.players.setRange(2, 10)
-        self.players.setValue(self.settings.default_player_count)
+        self.players = self._spinbox_styled(
+            self.settings.default_player_count, min_val=2, max_val=10
+        )
         self.position = self.qtwidgets.QComboBox()
         for position in Position:
             self.position.addItem(position.display_name, position.value)
@@ -340,17 +342,16 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
         self.preset_combo.setCurrentText(default_preset)
         self.action_preset_combo = self.qtwidgets.QComboBox()
         self.action_preset_combo.addItems(list(_ACTION_PRESETS))
-        self.players_behind = self.qtwidgets.QSpinBox()
-        self.players_behind.setRange(0, max(0, self.settings.default_player_count - 1))
+        self.players_behind = self._spinbox_styled(
+            0, min_val=0, max_val=max(0, self.settings.default_player_count - 1)
+        )
         self.folded_seats = self.qtwidgets.QLineEdit()
         self.folded_seats.setPlaceholderText("e.g. 2, 4")
         self.called_seats = self.qtwidgets.QLineEdit()
         self.called_seats.setPlaceholderText("e.g. 1, 3")
-        self.aggressor_seat = self.qtwidgets.QSpinBox()
-        self.aggressor_seat.setRange(-1, 9)
+        self.aggressor_seat = self._spinbox_styled(0, min_val=-1, max_val=9)
         self.aggressor_seat.setSpecialValueText("None")
-        self.current_actor_seat = self.qtwidgets.QSpinBox()
-        self.current_actor_seat.setRange(-1, 9)
+        self.current_actor_seat = self._spinbox_styled(-1, min_val=-1, max_val=9)
         self.current_actor_seat.setSpecialValueText("Hero")
         self.action_order_label = self.qtwidgets.QLabel("Action order: calculating...")
         self.action_order_label.setWordWrap(True)
@@ -580,6 +581,20 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
         self.training_button.clicked.connect(self.training)
         self.about_button.clicked.connect(self.about)
         return bar
+
+    def _spinbox_styled(self, value: int, min_val: int = 0, max_val: int = 10) -> Any:
+        """Create a QSpinBox with up/down buttons styled to match _money_spin."""
+        spin = self.qtwidgets.QSpinBox()
+        spin.setRange(min_val, max_val)
+        spin.setValue(value)
+        spin.setButtonSymbols(self.qtwidgets.QAbstractSpinBox.UpDownArrows)
+        spin.setStyleSheet(
+            "QAbstractSpinBox::up-button, QAbstractSpinBox::down-button {"
+            " width: 20px; height: 20px; }"
+            "QAbstractSpinBox::up-arrow, QAbstractSpinBox::down-arrow {"
+            " width: 10px; height: 10px; }"
+        )
+        return spin
 
     def _button(self, text: str, shortcut: str, tooltip: str) -> Any:
         button = self.qtwidgets.QPushButton(text)
@@ -1284,18 +1299,16 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
         theme = self.qtwidgets.QComboBox()
         theme.addItems(["light", "dark"])
         theme.setCurrentText(self.settings.theme)
-        players = self.qtwidgets.QSpinBox()
-        players.setRange(2, 10)
-        players.setValue(self.settings.default_player_count)
+        players = self._spinbox_styled(
+            self.settings.default_player_count, min_val=2, max_val=10
+        )
         simulations = self.qtwidgets.QComboBox()
         for name, count in _PRESETS.items():
             simulations.addItem(f"{name} ({count:,})", count)
         simulations.setCurrentIndex(
             max(0, simulations.findData(self.settings.default_simulation_count))
         )
-        precision = self.qtwidgets.QSpinBox()
-        precision.setRange(0, 4)
-        precision.setValue(self.settings.percentage_precision)
+        precision = self._spinbox_styled(self.settings.percentage_precision, min_val=0, max_val=4)
         detailed = self.qtwidgets.QCheckBox("Show detailed explanations")
         detailed.setChecked(self.settings.detailed_explanations)
         automatic = self.qtwidgets.QCheckBox("Analyze automatically")
@@ -1362,7 +1375,7 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
             "guaranteed profitable.\n\nSaved data: " + str(user_data_dir())
         )
         if self.qtgui is not None:
-            icon_path = resource_path("peaceful_poker.ico")
+            icon_path = resource_path("Logo.png")
             if icon_path.exists():
                 box.setWindowIcon(self.qtgui.QIcon(str(icon_path)))
         box.exec()
@@ -1479,6 +1492,8 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
             try:
                 self._main_area.hide()
                 self._landing_page.show()
+                if hasattr(self, "home_button"):
+                    self.home_button.hide()
             except Exception:
                 pass
 
@@ -1488,6 +1503,8 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
             try:
                 self._landing_page.hide()
                 self._main_area.show()
+                if hasattr(self, "home_button"):
+                    self.home_button.show()
             except Exception:
                 pass
 

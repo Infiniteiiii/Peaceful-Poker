@@ -223,7 +223,7 @@ def test_close_during_analysis_cancels_then_closes(
 
 def test_theme_resources_and_empty_states_are_visible(window: MainWindow) -> None:
     window._apply_theme("dark")
-    assert "#202326" in window.window.styleSheet()
+    assert "#1C2128" in window.window.styleSheet()
     window.new_hand()
     assert "Enter two hero cards" in window.output.toPlainText()
     assert window.window.minimumWidth() <= 900

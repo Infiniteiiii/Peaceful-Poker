@@ -16,6 +16,18 @@ def smoke_test_enabled() -> bool:
 
 def run() -> int:
     """Start the desktop application."""
+    plugin_root = (
+        Path(sys.prefix)
+        / "lib"
+        / f"python{sys.version_info.major}.{sys.version_info.minor}"
+        / "site-packages"
+        / "PySide6"
+        / "Qt"
+        / "plugins"
+    )
+    platform_plugins = plugin_root / "platforms"
+    os.environ.setdefault("QT_PLUGIN_PATH", str(plugin_root))
+    os.environ.setdefault("QT_QPA_PLATFORM_PLUGIN_PATH", str(platform_plugins))
     try:
         from PySide6 import QtCore, QtGui, QtWidgets
     except ImportError as exc:  # pragma: no cover - depends on optional local install state
@@ -28,13 +40,14 @@ def run() -> int:
     from poker_trainer.ui.main_window import MainWindow
 
     configure_logging()
+    QtCore.QCoreApplication.setLibraryPaths([str(plugin_root)])
     app: Any = QtWidgets.QApplication.instance()
     if app is None:
         app = QtWidgets.QApplication(sys.argv)
     app.setApplicationName("Peaceful Poker")
     app.setApplicationDisplayName("Peaceful Poker")
     app.setApplicationVersion("1.1.0")
-    icon_path = resource_path("peaceful_poker.ico")
+    icon_path = resource_path("Logo.png")
     if icon_path.exists():
         app.setWindowIcon(QtGui.QIcon(str(icon_path)))
     main_window = MainWindow(QtWidgets, QtCore, QtGui)
@@ -80,7 +93,7 @@ def run() -> int:
                 "action_aware_complete": result is not None and result.action_aware is not None,
                 "resources_loaded": all(
                     resource_path(name).exists()
-                    for name in ("light.qss", "dark.qss", "peaceful_poker.ico")
+                    for name in ("light.qss", "dark.qss", "Logo.png")
                 ),
                 "window_title": main_window.window.windowTitle(),
                 "user_data_dir": str(user_data_dir()),
