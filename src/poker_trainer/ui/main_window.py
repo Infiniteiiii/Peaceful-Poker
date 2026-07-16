@@ -158,22 +158,6 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
         title.setAlignment(left | vcenter)
         bar.addWidget(title)
 
-        # Menu toggle (retractable sidebar)
-        self.menu_toggle = self.qtwidgets.QToolButton()
-        self.menu_toggle.setObjectName("menuToggle")
-        self.menu_toggle.setText("☰")
-        self.menu_toggle.setToolTip("Show / hide navigation sidebar")
-        self.menu_toggle.clicked.connect(self._toggle_sidebar)
-        bar.addWidget(self.menu_toggle)
-
-        # Back to landing page action
-        self.back_to_landing = self.qtwidgets.QToolButton()
-        self.back_to_landing.setObjectName("backToLanding")
-        self.back_to_landing.setText("Back")
-        self.back_to_landing.setToolTip("Return to the landing page")
-        self.back_to_landing.clicked.connect(self._show_landing)
-        bar.addWidget(self.back_to_landing)
-
         bar.addStretch(1)
 
         self.theme_toggle = self.qtwidgets.QToolButton()

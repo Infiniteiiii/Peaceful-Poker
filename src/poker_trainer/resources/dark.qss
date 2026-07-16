@@ -1,6 +1,8 @@
 QWidget {
     background: __BG_APP__;
     color: __TEXT_PRIMARY__;
+    font-family: "Inter", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    font-size: 13px;
 }
 QMainWindow#mainWindow {
     background: __BG_APP__;
@@ -76,7 +78,17 @@ QToolButton#themeToggle {
     background: __BG_SURFACE__;
     border: 1px solid __BORDER_SUBTLE__;
     border-radius: 10px;
-    padding: 6px 12px;
+    padding: 8px 14px;
+    min-width: 90px;
+}
+QToolButton {
+    min-width: 28px;
+    min-height: 28px;
+    border-radius: 16px;
+    padding: 4px 8px;
+}
+QToolButton:pressed {
+    background: rgba(255,255,255,0.08);
 }
 QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QTextEdit, QTableWidget {
     background: __BG_SURFACE_RAISED__;
@@ -173,11 +185,11 @@ QPushButton#sidebarNav {
     border-radius: 12px;
 }
 
-QToolButton#menuToggle, QToolButton#backToLanding, QToolButton#themeToggle {
+QToolButton#themeToggle {
     background: rgba(255,255,255,0.02);
     border: 1px solid rgba(255,255,255,0.04);
     border-radius: 12px;
-    padding: 6px 10px;
+    padding: 8px 12px;
 }
 
 QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QTextEdit, QTableWidget {
