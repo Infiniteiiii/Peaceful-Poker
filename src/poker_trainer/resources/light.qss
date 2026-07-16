@@ -21,13 +21,64 @@ QGroupBox {
 QGroupBox::title {
     subcontrol-origin: margin;
     left: 16px;
-    /* reduce negative offset so titles aren't cropped */
     top: -6px;
     padding: 0 4px;
+    font-size: 14px;
+    font-weight: 700;
+    color: __TEXT_PRIMARY__;
+}
+QGroupBox#settingsCard {
+    margin-top: 0;
+    padding: 24px;
+}
+QLabel#sectionTitle {
+    background: transparent;
+    border: none;
+    color: __TEXT_PRIMARY__;
+    font-size: 20px;
+    font-weight: 700;
+    margin: 10px 0 2px 0;
+}
+QWidget#resultsPanel QLabel#statusPill {
+    font-size: 14px;
+    font-weight: 500;
+    color: __TEXT_PRIMARY__;
+}
+QWidget#resultsPanel QTabBar::tab {
+    font-size: 14px;
+    font-weight: 500;
+}
+QWidget#resultsPanel QTextEdit,
+QWidget#resultsPanel QTableWidget {
+    font-size: 14px;
+}
+QSplitter#mainSplitter::handle {
+    background: transparent;
+}
+QSplitter#mainSplitter::handle:horizontal {
+    width: 10px;
+    margin: 6px 2px;
+    border-radius: 5px;
+    border: 1px solid __BORDER_SUBTLE__;
+    background: __BG_SURFACE_RAISED__;
+}
+QSplitter#mainSplitter::handle:horizontal:hover {
+    border-color: __ACCENT_SECONDARY__;
+}
+QLabel#fieldLabel {
+    background: transparent;
+    border: none;
+    color: __TEXT_PRIMARY__;
+    font-size: 14px;
+    font-weight: 500;
+    min-height: 36px;
+    padding: 0;
 }
 QLabel#groupHelper {
+    background: transparent;
+    border: none;
     color: __TEXT_SECONDARY__;
-    font-size: 12px;
+    font-size: 13px;
 }
 QLabel#appTitle {
     color: __TEXT_PRIMARY__;
@@ -83,6 +134,9 @@ QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QTextEdit, QTableWidget {
     border-radius: 10px;
     padding: 8px;
 }
+QComboBox {
+    combobox-popup: 0;
+}
 QLineEdit:disabled, QComboBox:disabled, QSpinBox:disabled, QDoubleSpinBox:disabled {
     color: __TEXT_DISABLED__;
 }
@@ -98,6 +152,40 @@ QComboBox::down-arrow {
     width: 0;
     height: 0;
     margin: 0;
+}
+QComboBox QAbstractItemView {
+    background: __BG_SURFACE__;
+    color: __TEXT_PRIMARY__;
+    border: 1px solid __BORDER_SUBTLE__;
+    border-radius: 10px;
+    outline: none;
+    selection-background-color: __ACCENT_PRIMARY__;
+    selection-color: #08110a;
+    padding: 0;
+    margin: 0;
+}
+QComboBox QAbstractItemView::viewport {
+    background: __BG_SURFACE__;
+    border: none;
+    margin: 0;
+    padding: 0;
+}
+QComboBox QAbstractItemView::item {
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    min-height: 28px;
+    margin: 2px 4px;
+    padding: 4px 10px;
+}
+QComboBox QAbstractItemView::item:hover {
+    background: __BG_SURFACE_RAISED__;
+    border-radius: 8px;
+}
+QComboBox QAbstractItemView::item:selected {
+    background: __ACCENT_PRIMARY__;
+    color: #08110a;
+    border-radius: 8px;
 }
 QScrollArea {
     background: transparent;
@@ -142,9 +230,13 @@ QLabel#appTitle {
 }
 
 QLabel#cardLabel {
+    background: transparent;
+    border: none;
     color: __TEXT_PRIMARY__;
+    font-size: 14px;
+    font-weight: 500;
+    min-height: 36px;
     padding-right: 8px;
-    font-weight: 600;
 }
 
 QProgressBar::chunk {
@@ -172,9 +264,7 @@ QWidget#landingPage {
 }
 
 QWidget#landingHero {
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-        stop:0 #DDE6F7, stop:0.6 #E8EFFA, stop:1 __BG_APP__);
-    border-bottom: 1px solid __BORDER_SUBTLE__;
+    background: transparent;
 }
 
 QLabel#landingSuits {
@@ -224,22 +314,132 @@ QWidget#landingFeatures {
 }
 
 QFrame#featureCard {
-    background: __BG_SURFACE_RAISED__;
-    border: 1px solid __BORDER_SUBTLE__;
-    border-radius: 14px;
+    background: transparent;
+    border: none;
+    border-radius: 0px;
+    padding: 0px;
+    margin: 0px;
 }
 
 QLabel#featureIcon {
     font-size: 28px;
+    background: transparent;
+    border: none;
 }
 
 QLabel#featureTitle {
     color: __TEXT_PRIMARY__;
     font-size: 14px;
     font-weight: 700;
+    background: transparent;
+    border: none;
 }
 
 QLabel#featureBody {
     color: __TEXT_SECONDARY__;
     font-size: 12px;
+    background: transparent;
+    border: none;
+}
+
+/* ========== CARD PICKER DIALOG ========== */
+QDialog#cardPickerDialog {
+    background: __BG_SURFACE__;
+}
+QLabel#cardPickerTitle {
+    background: transparent;
+    border: none;
+    color: __TEXT_PRIMARY__;
+    font-size: 24px;
+    font-weight: 700;
+}
+QLabel#cardPickerSubtitle {
+    background: transparent;
+    border: none;
+    color: __TEXT_SECONDARY__;
+    font-size: 13px;
+    margin-bottom: 4px;
+}
+QWidget#cardPickerGrid {
+    background: transparent;
+    border: none;
+}
+QLabel#cardPickerSuitHeader,
+QLabel#cardPickerRankHeader {
+    background: transparent;
+    border: none;
+    color: __TEXT_PRIMARY__;
+    font-size: 17px;
+    font-weight: 700;
+    min-width: 30px;
+}
+QLabel#cardPickerSuitHeader[redSuit="true"] {
+    color: #EF4444;
+}
+QPushButton#cardPickerCard {
+    background: __BG_SURFACE_RAISED__;
+    color: __TEXT_PRIMARY__;
+    border: 1px solid __BORDER_SUBTLE__;
+    border-radius: 12px;
+    padding: 10px 12px;
+    margin: 0;
+}
+QPushButton#cardPickerCard:hover {
+    background: __BG_SURFACE__;
+    border: 1px solid __ACCENT_SECONDARY__;
+}
+QPushButton#cardPickerCard:pressed {
+    background: __BG_APP__;
+    border: 1px solid __ACCENT_PRIMARY__;
+}
+QPushButton#cardPickerCard:focus {
+    border: 1px solid __ACCENT_PRIMARY__;
+}
+QPushButton#cardPickerCard[selected="true"] {
+    background: #E8F1FF;
+    border: 1px solid __ACCENT_PRIMARY__;
+}
+QPushButton#cardPickerCard[used="true"],
+QPushButton#cardPickerCard:disabled {
+    background: __BG_SURFACE__;
+    border: 1px solid __BORDER_SUBTLE__;
+    color: __TEXT_DISABLED__;
+}
+QWidget#cardPickerCardText {
+    background: transparent;
+    border: none;
+}
+QFrame#infoPanel {
+    background: __BG_SURFACE__;
+    border: 1px solid __BORDER_SUBTLE__;
+    border-radius: 12px;
+}
+QLabel#infoPanelTitle {
+    background: transparent;
+    border: none;
+    color: __TEXT_PRIMARY__;
+    font-size: 14px;
+    font-weight: 700;
+}
+QLabel#infoPanelBody {
+    background: transparent;
+    border: none;
+    color: __TEXT_SECONDARY__;
+    font-size: 13px;
+}
+QLabel#cardPickerRankText,
+QLabel#cardPickerSuitText {
+    background: transparent;
+    border: none;
+    color: __TEXT_PRIMARY__;
+    font-size: 16px;
+    font-weight: 600;
+    font-family: "Inter", "SF Pro Text", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+QLabel#cardPickerSuitText[redSuit="true"] {
+    color: #EF4444;
+}
+QLabel#cardPickerRankText:disabled,
+QLabel#cardPickerSuitText:disabled {
+    color: __TEXT_DISABLED__;
 }

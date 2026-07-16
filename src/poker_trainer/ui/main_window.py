@@ -39,6 +39,13 @@ _PRESETS = {
 }
 _ACTION_PRESETS = ("Quick", "Standard", "Accurate")
 _EMPTY_RESULT = "Enter two hero cards and a valid board, then choose Analyze."
+_SUIT_SYMBOLS = {
+    Suit.SPADES: "♠",
+    Suit.HEARTS: "♥",
+    Suit.DIAMONDS: "♦",
+    Suit.CLUBS: "♣",
+}
+_SYMBOL_TO_SUIT_CODE = {symbol: suit.code for suit, symbol in _SUIT_SYMBOLS.items()}
 
 _THEME_TOKENS = {
     "dark": {
@@ -283,10 +290,16 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
         layout.setSpacing(12)
         self.sidebar_widget = None
         layout.addLayout(self._button_grid())
-        panels = self.qtwidgets.QHBoxLayout()
-        panels.addWidget(self._setup_panel(), 1)
-        panels.addWidget(self._results_panel(), 1)
-        layout.addLayout(panels)
+        self.main_splitter = self.qtwidgets.QSplitter(self.qtcore.Qt.Orientation.Horizontal)
+        self.main_splitter.setObjectName("mainSplitter")
+        self.main_splitter.setChildrenCollapsible(False)
+        self.main_splitter.setHandleWidth(10)
+        self.main_splitter.addWidget(self._setup_panel())
+        self.main_splitter.addWidget(self._results_panel())
+        self.main_splitter.setStretchFactor(0, 1)
+        self.main_splitter.setStretchFactor(1, 1)
+        self.main_splitter.setSizes([580, 580])
+        layout.addWidget(self.main_splitter, 1)
         return container
 
     def _build_sidebar(self) -> Any:  # kept for API compatibility
@@ -307,6 +320,35 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
         outer = self.qtwidgets.QVBoxLayout(content)
         outer.setSpacing(16)
         outer.setContentsMargins(0, 0, 0, 0)
+
+        label_width = 170
+
+        def _add_section_title(text: str) -> None:
+            title_label = self.qtwidgets.QLabel(text)
+            title_label.setObjectName("sectionTitle")
+            outer.addWidget(title_label)
+
+        def _configure_form_layout(layout: Any) -> None:
+            layout.setLabelAlignment(
+                self.qtcore.Qt.AlignmentFlag.AlignLeft | self.qtcore.Qt.AlignmentFlag.AlignVCenter
+            )
+            layout.setFormAlignment(
+                self.qtcore.Qt.AlignmentFlag.AlignLeft | self.qtcore.Qt.AlignmentFlag.AlignTop
+            )
+            layout.setFieldGrowthPolicy(
+                self.qtwidgets.QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow
+            )
+            layout.setHorizontalSpacing(22)
+            layout.setVerticalSpacing(12)
+
+        def _add_form_row(layout: Any, label_text: str, field: Any) -> None:
+            label = self.qtwidgets.QLabel(label_text)
+            label.setObjectName("fieldLabel")
+            label.setMinimumWidth(label_width)
+            label.setAlignment(
+                self.qtcore.Qt.AlignmentFlag.AlignLeft | self.qtcore.Qt.AlignmentFlag.AlignVCenter
+            )
+            layout.addRow(label, field)
 
         self.players = self._spinbox_styled(
             self.settings.default_player_count, min_val=2, max_val=10
@@ -359,67 +401,87 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
         self.auto_analysis = self.qtwidgets.QCheckBox("Analyze automatically after changes")
         self.auto_analysis.setChecked(self.settings.automatic_analysis)
 
-        table_group = self.qtwidgets.QGroupBox("Table")
+        _add_section_title("Table")
+        table_group = self.qtwidgets.QGroupBox()
+        table_group.setObjectName("settingsCard")
         table_layout = self.qtwidgets.QFormLayout(table_group)
-        table_layout.addRow("Active players", self.players)
-        table_layout.addRow("Hero position", self.position)
-        table_layout.addRow("Small blind", self.small_blind)
-        table_layout.addRow("Big blind", self.big_blind)
-        table_layout.addRow("Ante", self.ante)
+        _configure_form_layout(table_layout)
+        _add_form_row(table_layout, "Active Players", self.players)
+        _add_form_row(table_layout, "Hero Position", self.position)
+        _add_form_row(table_layout, "Small Blind", self.small_blind)
+        _add_form_row(table_layout, "Big Blind", self.big_blind)
+        _add_form_row(table_layout, "Ante", self.ante)
         table_helper = self.qtwidgets.QLabel(
             "Seats, position, and blind structure for the current hand."
         )
         table_helper.setObjectName("groupHelper")
-        table_layout.addRow("", table_helper)
+        table_helper.setWordWrap(True)
+        table_layout.addRow(table_helper)
         outer.addWidget(table_group)
 
-        money_group = self.qtwidgets.QGroupBox("Money")
+        _add_section_title("Money")
+        money_group = self.qtwidgets.QGroupBox()
+        money_group.setObjectName("settingsCard")
         money_layout = self.qtwidgets.QFormLayout(money_group)
-        money_layout.addRow("Current pot", self.pot)
-        money_layout.addRow("Amount to call", self.call)
-        money_layout.addRow("Hero stack", self.stack)
-        money_layout.addRow("Effective stack", self.effective)
+        _configure_form_layout(money_layout)
+        _add_form_row(money_layout, "Current Pot", self.pot)
+        _add_form_row(money_layout, "Amount to Call", self.call)
+        _add_form_row(money_layout, "Hero Stack", self.stack)
+        _add_form_row(money_layout, "Effective Stack", self.effective)
         money_helper = self.qtwidgets.QLabel(
             "Chips and effective investment for the current decision."
         )
         money_helper.setObjectName("groupHelper")
-        money_layout.addRow("", money_helper)
+        money_helper.setWordWrap(True)
+        money_layout.addRow(money_helper)
         outer.addWidget(money_group)
 
-        action_group = self.qtwidgets.QGroupBox("Action so far")
+        _add_section_title("Action So Far")
+        action_group = self.qtwidgets.QGroupBox()
+        action_group.setObjectName("settingsCard")
         action_layout = self.qtwidgets.QFormLayout(action_group)
-        action_layout.addRow("Previous action", self.previous_action)
-        action_layout.addRow("Bettor / raiser seat", self.aggressor_seat)
-        action_layout.addRow("Current actor seat", self.current_actor_seat)
-        action_layout.addRow("Folded seat numbers", self.folded_seats)
-        action_layout.addRow("Called seat numbers", self.called_seats)
-        action_layout.addRow("Players behind hero", self.players_behind)
+        _configure_form_layout(action_layout)
+        _add_form_row(action_layout, "Previous Action", self.previous_action)
+        _add_form_row(action_layout, "Bettor / Raiser Seat", self.aggressor_seat)
+        _add_form_row(action_layout, "Current Actor Seat", self.current_actor_seat)
+        _add_form_row(action_layout, "Folded Seat Numbers", self.folded_seats)
+        _add_form_row(action_layout, "Called Seat Numbers", self.called_seats)
+        _add_form_row(action_layout, "Players Behind Hero", self.players_behind)
         action_helper = self.qtwidgets.QLabel("Opponent activity and action order before hero.")
         action_helper.setObjectName("groupHelper")
-        action_layout.addRow("", action_helper)
+        action_helper.setWordWrap(True)
+        action_layout.addRow(action_helper)
         outer.addWidget(action_group)
 
-        opponent_group = self.qtwidgets.QGroupBox("Opponent model")
+        _add_section_title("Opponent Model")
+        opponent_group = self.qtwidgets.QGroupBox()
+        opponent_group.setObjectName("settingsCard")
         opponent_layout = self.qtwidgets.QFormLayout(opponent_group)
-        opponent_layout.addRow("Opponent range", self.range_combo)
-        opponent_layout.addRow("Opponent profile", self.profile_combo)
+        _configure_form_layout(opponent_layout)
+        _add_form_row(opponent_layout, "Opponent Range", self.range_combo)
+        _add_form_row(opponent_layout, "Opponent Profile", self.profile_combo)
         opponent_helper = self.qtwidgets.QLabel(
             "Assumptions that shape opponent behavior in the analysis."
         )
         opponent_helper.setObjectName("groupHelper")
-        opponent_layout.addRow("", opponent_helper)
+        opponent_helper.setWordWrap(True)
+        opponent_layout.addRow(opponent_helper)
         outer.addWidget(opponent_group)
 
-        analysis_group = self.qtwidgets.QGroupBox("Analysis settings")
+        _add_section_title("Analysis Settings")
+        analysis_group = self.qtwidgets.QGroupBox()
+        analysis_group.setObjectName("settingsCard")
         analysis_layout = self.qtwidgets.QFormLayout(analysis_group)
-        analysis_layout.addRow("Simulation accuracy", self.preset_combo)
-        analysis_layout.addRow("Action-aware accuracy", self.action_preset_combo)
-        analysis_layout.addRow("Analysis mode", self.auto_analysis)
+        _configure_form_layout(analysis_layout)
+        _add_form_row(analysis_layout, "Simulation Accuracy", self.preset_combo)
+        _add_form_row(analysis_layout, "Action-Aware Accuracy", self.action_preset_combo)
+        _add_form_row(analysis_layout, "Analysis Mode", self.auto_analysis)
         analysis_helper = self.qtwidgets.QLabel(
             "Controls how the analysis is computed and refreshed."
         )
         analysis_helper.setObjectName("groupHelper")
-        analysis_layout.addRow("", analysis_helper)
+        analysis_helper.setWordWrap(True)
+        analysis_layout.addRow(analysis_helper)
         outer.addWidget(analysis_group)
 
         self.advanced_opponents = self.qtwidgets.QPushButton("Edit individual opponents")
@@ -433,16 +495,19 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
         footer_row.addWidget(self.action_order_label)
         outer.addLayout(footer_row)
 
-        cards_group = self.qtwidgets.QGroupBox("Cards")
+        _add_section_title("Cards")
+        cards_group = self.qtwidgets.QGroupBox()
+        cards_group.setObjectName("settingsCard")
         cards = self.qtwidgets.QFormLayout(cards_group)
+        _configure_form_layout(cards)
         self.card_edits: list[Any] = []
         for slot in _CARD_SLOTS:
             row = self.qtwidgets.QHBoxLayout()
             edit = self.qtwidgets.QLineEdit()
-            edit.setPlaceholderText("AS")
+            edit.setPlaceholderText("A♠")
             edit.setMaxLength(3)
             edit.setAccessibleName(slot)
-            edit.setToolTip(f"Enter {slot.lower()} as AS, TH, or 10H.")
+            edit.setToolTip(f"Enter {slot.lower()} as A♠, T♥, AS, TH, or 10H.")
             pick = self.qtwidgets.QPushButton("Pick")
             pick.setToolTip(f"Choose {slot.lower()} from the deck.")
             pick.clicked.connect(lambda _checked=False, field=edit: self._pick_card(field))
@@ -450,8 +515,11 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
             row.addWidget(pick)
             # Use a QLabel for the form label to avoid automatic eliding/cropping
             label = self.qtwidgets.QLabel(slot)
-            label.setMinimumWidth(110)
+            label.setMinimumWidth(label_width)
             label.setObjectName("cardLabel")
+            label.setAlignment(
+                self.qtcore.Qt.AlignmentFlag.AlignLeft | self.qtcore.Qt.AlignmentFlag.AlignVCenter
+            )
             cards.addRow(label, row)
             self.card_edits.append(edit)
         outer.addWidget(cards_group)
@@ -465,11 +533,15 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
 
     def _results_panel(self) -> Any:
         panel = self.qtwidgets.QWidget()
+        panel.setObjectName("resultsPanel")
         layout = self.qtwidgets.QVBoxLayout(panel)
         layout.setSpacing(12)
+        results_title = self.qtwidgets.QLabel("Results")
+        results_title.setObjectName("sectionTitle")
+        layout.addWidget(results_title)
         self.status_label = self.qtwidgets.QLabel("Ready")
-        self.status_label.setWordWrap(True)
         self.status_label.setObjectName("statusPill")
+        self.status_label.setWordWrap(True)
         self.progress = self.qtwidgets.QProgressBar()
         self.progress.setRange(0, 1)
         self.progress.setValue(0)
@@ -680,11 +752,23 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
         self.auto_analysis.toggled.connect(self._auto_analysis_changed)
         self._update_action_order()
 
+    def _normalize_card_text(self, text: str) -> str:
+        normalized = text.strip().upper()
+        if not normalized:
+            return ""
+        suit_code = _SYMBOL_TO_SUIT_CODE.get(normalized[-1])
+        if suit_code is not None:
+            return f"{normalized[:-1]}{suit_code}"
+        return normalized
+
+    def _display_card_text(self, card: Card) -> str:
+        return f"{card.rank.code}{_SUIT_SYMBOLS[card.suit]}"
+
     def _state(self) -> GameState:
-        hero_text = [edit.text().strip() for edit in self.card_edits[:2]]
+        hero_text = [self._normalize_card_text(edit.text()) for edit in self.card_edits[:2]]
         if not all(hero_text):
             raise ValueError("Enter both hero cards before analyzing.")
-        board_text = [edit.text().strip() for edit in self.card_edits[2:]]
+        board_text = [self._normalize_card_text(edit.text()) for edit in self.card_edits[2:]]
         if any(board_text[:3]) and not all(board_text[:3]):
             raise ValueError("Enter all three flop cards, or clear the flop.")
         if board_text[3] and not all(board_text[:3]):
@@ -1035,6 +1119,20 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
         explanation.setWordWrap(True)
         layout.addWidget(explanation)
 
+        info_panel = self.qtwidgets.QFrame()
+        info_panel.setObjectName("infoPanel")
+        info_panel_layout = self.qtwidgets.QVBoxLayout(info_panel)
+        info_panel_layout.setContentsMargins(14, 12, 14, 12)
+        info_panel_layout.setSpacing(4)
+        info_title = self.qtwidgets.QLabel("Column Info")
+        info_title.setObjectName("infoPanelTitle")
+        info_body = self.qtwidgets.QLabel("Click a header ⓘ to see what that column controls.")
+        info_body.setObjectName("infoPanelBody")
+        info_body.setWordWrap(True)
+        info_panel_layout.addWidget(info_title)
+        info_panel_layout.addWidget(info_body)
+        layout.addWidget(info_panel)
+
         column_info = [
             ("Seat", "Zero-based seat number at the table."),
             ("Position", "Opponent table position for this round."),
@@ -1045,30 +1143,21 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
             ("Range", "Estimated opponent hand range assumption for the current situation."),
             ("Previous", "Most recent action the opponent took before hero's turn."),
         ]
-        info_row = self.qtwidgets.QHBoxLayout()
-        info_row.setContentsMargins(0, 0, 0, 0)
-        info_row.setSpacing(8)
-        for title, description in column_info:
-            info_button = self.qtwidgets.QToolButton()
-            info_button.setText("i")
-            info_button.setFixedSize(22, 22)
-            info_button.setToolTip(description)
-            info_button.setCursor(self.qtcore.Qt.CursorShape.PointingHandCursor)
-            info_button.clicked.connect(
-                partial(
-                    self.qtwidgets.QMessageBox.information,
-                    dialog,
-                    title,
-                    description,
-                )
-            )
-            info_row.addWidget(info_button)
-        layout.addLayout(info_row)
-
         editor = self.qtwidgets.QTableWidget(len(table_state.players), 8)
-        editor.setHorizontalHeaderLabels(
-            ["Seat", "Position", "Folded", "All-in", "Stack", "Profile", "Range", "Previous"]
-        )
+        editor.setHorizontalHeaderLabels([f"{title}  ⓘ" for title, _description in column_info])
+        header = editor.horizontalHeader()
+        header.setSectionsClickable(True)
+        for index, (_title, description) in enumerate(column_info):
+            header_item = editor.horizontalHeaderItem(index)
+            if header_item is not None:
+                header_item.setToolTip(description)
+
+        def _show_column_info(section_index: int) -> None:
+            title, description = column_info[section_index]
+            info_title.setText(title)
+            info_body.setText(description)
+
+        header.sectionClicked.connect(_show_column_info)
         controls: dict[int, tuple[Any, Any, Any, Any, Any, Any, Any]] = {}
         for row, player in enumerate(table_state.players):
             seat_item = self.qtwidgets.QTableWidgetItem(str(player.seat))
@@ -1171,20 +1260,108 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
 
     def _pick_card(self, field: Any) -> None:
         dialog = self.qtwidgets.QDialog(self.window)
-        dialog.setWindowTitle("Select card")
-        grid = self.qtwidgets.QGridLayout(dialog)
+        dialog.setWindowTitle("Select a Card")
+        dialog.setObjectName("cardPickerDialog")
+        dialog.setModal(True)
+        layout = self.qtwidgets.QVBoxLayout(dialog)
+        layout.setContentsMargins(22, 20, 22, 18)
+        layout.setSpacing(12)
+
+        title = self.qtwidgets.QLabel("Choose a Card")
+        title.setObjectName("cardPickerTitle")
+        layout.addWidget(title)
+
+        subtitle = self.qtwidgets.QLabel("Pick one available card from the deck")
+        subtitle.setObjectName("cardPickerSubtitle")
+        layout.addWidget(subtitle)
+
+        grid_holder = self.qtwidgets.QWidget()
+        grid_holder.setObjectName("cardPickerGrid")
+        grid = self.qtwidgets.QGridLayout(grid_holder)
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(12)
+        grid.setVerticalSpacing(12)
+
+        suit_symbols = {
+            Suit.SPADES: "♠",
+            Suit.HEARTS: "♥",
+            Suit.DIAMONDS: "♦",
+            Suit.CLUBS: "♣",
+        }
+
+        for col, suit in enumerate(Suit, start=1):
+            suit_header = self.qtwidgets.QLabel(suit_symbols[suit])
+            suit_header.setObjectName("cardPickerSuitHeader")
+            if suit in (Suit.HEARTS, Suit.DIAMONDS):
+                suit_header.setProperty("redSuit", True)
+            suit_header.setAlignment(self.qtcore.Qt.AlignmentFlag.AlignCenter)
+            grid.addWidget(suit_header, 0, col)
+
         used: set[Card] = set()
         for edit in self.card_edits:
             if edit is field or not edit.text().strip():
                 continue
             try:
-                used.add(Card.from_code(edit.text()))
+                used.add(Card.from_code(self._normalize_card_text(edit.text())))
             except Exception:  # noqa: BLE001 - invalid manual input is handled on analyze
                 continue
-        for row, rank in enumerate(reversed(tuple(Rank))):
-            for col, suit in enumerate(Suit):
+
+        current_card: Card | None = None
+        current_text = field.text().strip()
+        if current_text:
+            try:
+                current_card = Card.from_code(self._normalize_card_text(current_text))
+            except Exception:  # noqa: BLE001 - invalid manual input is handled on analyze
+                current_card = None
+
+        for row, rank in enumerate(reversed(tuple(Rank)), start=1):
+            rank_header = self.qtwidgets.QLabel(rank.code)
+            rank_header.setObjectName("cardPickerRankHeader")
+            rank_header.setAlignment(self.qtcore.Qt.AlignmentFlag.AlignCenter)
+            grid.addWidget(rank_header, row, 0)
+
+            for col, suit in enumerate(Suit, start=1):
                 card = Card(rank, suit)
-                button = self.qtwidgets.QPushButton(card.short_code)
+                button = self.qtwidgets.QPushButton()
+                button.setObjectName("cardPickerCard")
+                button.setFixedSize(88, 56)
+                button.setCursor(self.qtcore.Qt.CursorShape.PointingHandCursor)
+                button.setFocusPolicy(self.qtcore.Qt.FocusPolicy.StrongFocus)
+                button.setAutoDefault(False)
+                button.setDefault(False)
+                if current_card is not None and card == current_card:
+                    button.setProperty("selected", True)
+                if card in used:
+                    button.setProperty("used", True)
+
+                content = self.qtwidgets.QHBoxLayout(button)
+                content.setContentsMargins(0, 0, 0, 0)
+                content.setSpacing(0)
+                text_wrap = self.qtwidgets.QWidget()
+                text_wrap.setObjectName("cardPickerCardText")
+                text_wrap_layout = self.qtwidgets.QHBoxLayout(text_wrap)
+                text_wrap_layout.setContentsMargins(0, 0, 0, 0)
+                text_wrap_layout.setSpacing(0)
+
+                rank_label = self.qtwidgets.QLabel(rank.code)
+                rank_label.setObjectName("cardPickerRankText")
+                rank_label.setAttribute(
+                    self.qtcore.Qt.WidgetAttribute.WA_TransparentForMouseEvents,
+                    True,
+                )
+                suit_label = self.qtwidgets.QLabel(suit_symbols[suit])
+                suit_label.setObjectName("cardPickerSuitText")
+                if suit in (Suit.HEARTS, Suit.DIAMONDS):
+                    suit_label.setProperty("redSuit", True)
+                suit_label.setAttribute(
+                    self.qtcore.Qt.WidgetAttribute.WA_TransparentForMouseEvents,
+                    True,
+                )
+
+                text_wrap_layout.addWidget(rank_label)
+                text_wrap_layout.addWidget(suit_label)
+                content.addWidget(text_wrap, 0, self.qtcore.Qt.AlignmentFlag.AlignCenter)
+
                 button.setAccessibleName(card.display_name)
                 button.setToolTip(card.display_name if card not in used else "Already used")
                 button.setEnabled(card not in used)
@@ -1192,10 +1369,17 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
                     lambda _checked=False, selected=card: self._set_card(dialog, field, selected)
                 )
                 grid.addWidget(button, row, col)
+        layout.addWidget(grid_holder)
+
+        actions = self.qtwidgets.QDialogButtonBox(self.qtwidgets.QDialogButtonBox.StandardButton.Cancel)
+        actions.rejected.connect(dialog.reject)
+        layout.addWidget(actions)
+
+        dialog.resize(500, 860)
         dialog.exec()
 
     def _set_card(self, dialog: Any, field: Any, card: Card) -> None:
-        field.setText(card.code)
+        field.setText(self._display_card_text(card))
         dialog.accept()
 
     def clear_current_street(self) -> None:
@@ -1429,7 +1613,7 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
             }
         values = [*state.hero_cards, *state.community_cards]
         for index, edit in enumerate(self.card_edits):
-            edit.setText(values[index].code if index < len(values) else "")
+            edit.setText(self._display_card_text(values[index]) if index < len(values) else "")
         self._suspend_changes = False
         self.analysis_id += 1
         self.latest_result = None
