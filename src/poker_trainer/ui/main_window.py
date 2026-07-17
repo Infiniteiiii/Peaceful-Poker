@@ -762,7 +762,7 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
         return normalized
 
     def _display_card_text(self, card: Card) -> str:
-        return f"{card.rank.code}{_SUIT_SYMBOLS[card.suit]}"
+        return card.code
 
     def _state(self) -> GameState:
         hero_text = [self._normalize_card_text(edit.text()) for edit in self.card_edits[:2]]
