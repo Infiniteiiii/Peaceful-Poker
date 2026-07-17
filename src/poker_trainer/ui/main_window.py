@@ -252,12 +252,21 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
         feat_layout.setSpacing(20)
 
         for icon, feat_title, feat_body in [
-            ("\U0001f4ca", "Equity Analysis",
-             "Monte Carlo simulation across any number of players."),
-            ("\U0001f9e0", "Action-Aware EV",
-             "Model opponent fold/call/raise frequencies for real EV."),
-            ("\U0001f3af", "Training Mode",
-             "Practice decisions on generated scenarios with feedback."),
+            (
+                "\U0001f4ca",
+                "Equity Analysis",
+                "Monte Carlo simulation across any number of players.",
+            ),
+            (
+                "\U0001f9e0",
+                "Action-Aware EV",
+                "Model opponent fold/call/raise frequencies for real EV.",
+            ),
+            (
+                "\U0001f3af",
+                "Training Mode",
+                "Practice decisions on generated scenarios with feedback.",
+            ),
         ]:
             card = self.qtwidgets.QFrame()
             card.setObjectName("featureCard")
@@ -1371,7 +1380,9 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
                 grid.addWidget(button, row, col)
         layout.addWidget(grid_holder)
 
-        actions = self.qtwidgets.QDialogButtonBox(self.qtwidgets.QDialogButtonBox.StandardButton.Cancel)
+        actions = self.qtwidgets.QDialogButtonBox(
+            self.qtwidgets.QDialogButtonBox.StandardButton.Cancel
+        )
         actions.rejected.connect(dialog.reject)
         layout.addWidget(actions)
 
@@ -1483,9 +1494,7 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
         theme = self.qtwidgets.QComboBox()
         theme.addItems(["light", "dark"])
         theme.setCurrentText(self.settings.theme)
-        players = self._spinbox_styled(
-            self.settings.default_player_count, min_val=2, max_val=10
-        )
+        players = self._spinbox_styled(self.settings.default_player_count, min_val=2, max_val=10)
         simulations = self.qtwidgets.QComboBox()
         for name, count in _PRESETS.items():
             simulations.addItem(f"{name} ({count:,})", count)

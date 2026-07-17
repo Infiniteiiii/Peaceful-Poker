@@ -92,8 +92,7 @@ def run() -> int:
                 "analysis_complete": result is not None,
                 "action_aware_complete": result is not None and result.action_aware is not None,
                 "resources_loaded": all(
-                    resource_path(name).exists()
-                    for name in ("light.qss", "dark.qss", "Logo.png")
+                    resource_path(name).exists() for name in ("light.qss", "dark.qss", "Logo.png")
                 ),
                 "window_title": main_window.window.windowTitle(),
                 "user_data_dir": str(user_data_dir()),
