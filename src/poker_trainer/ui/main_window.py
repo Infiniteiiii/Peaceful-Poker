@@ -1,7 +1,6 @@
 """Main Peaceful Poker desktop window."""
 
 from dataclasses import replace
-from functools import partial
 from pathlib import Path
 from typing import Any
 
