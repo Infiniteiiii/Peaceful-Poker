@@ -2,9 +2,10 @@
 
 from poker_trainer.models.action_aware import HeroActionKind, HeroCandidateAction
 from poker_trainer.models.game_state import GameState
+from poker_trainer.strategy.action_labels import format_action
 from poker_trainer.utils.exceptions import InvalidGameStateError
 
-_BET_FRACTIONS = (0.25, 0.33, 0.50, 0.67, 0.75, 1.00)
+_BET_FRACTIONS = (0.25, 0.33, 0.50, 0.66, 0.75, 1.00, 1.50)
 
 
 def generate_candidate_actions(game_state: GameState) -> tuple[HeroCandidateAction, ...]:
@@ -13,24 +14,30 @@ def generate_candidate_actions(game_state: GameState) -> tuple[HeroCandidateActi
     if table is None:
         raise InvalidGameStateError("Action-aware analysis requires table state.")
     hero = table.hero
-    stack = hero.stack if hero.stack > 0 else game_state.hero_stack
+    hero_stack = hero.stack if hero.stack > 0 else game_state.hero_stack
+    effective_stack = game_state.effective_stack or hero_stack
+    stack = min(hero_stack, effective_stack)
     if game_state.amount_to_call <= 0:
         candidates = [
             HeroCandidateAction(
                 key="check",
-                label="Check",
+                label=format_action(HeroActionKind.CHECK, game_state),
                 kind=HeroActionKind.CHECK,
                 additional_investment=0.0,
                 target_round_contribution=hero.round_contribution,
             )
         ]
         for fraction in _BET_FRACTIONS:
-            amount = min(stack, max(game_state.big_blind, game_state.pot_size * fraction))
-            if amount > 0:
+            amount = round(max(game_state.big_blind, game_state.pot_size * fraction), 2)
+            if 0 < amount < stack:
                 candidates.append(
                     HeroCandidateAction(
                         key=f"bet_{int(fraction * 100)}",
-                        label=f"Bet {int(fraction * 100)}% pot",
+                        label=format_action(
+                            HeroActionKind.BET,
+                            game_state,
+                            additional_investment=amount,
+                        ),
                         kind=HeroActionKind.BET,
                         additional_investment=amount,
                         target_round_contribution=hero.round_contribution + amount,
@@ -40,7 +47,12 @@ def generate_candidate_actions(game_state: GameState) -> tuple[HeroCandidateActi
             candidates.append(
                 HeroCandidateAction(
                     key="all_in",
-                    label="All-in",
+                    label=format_action(
+                        HeroActionKind.ALL_IN,
+                        game_state,
+                        additional_investment=stack,
+                        target_round_contribution=hero.round_contribution + stack,
+                    ),
                     kind=HeroActionKind.ALL_IN,
                     additional_investment=stack,
                     target_round_contribution=hero.round_contribution + stack,
@@ -51,7 +63,7 @@ def generate_candidate_actions(game_state: GameState) -> tuple[HeroCandidateActi
     candidates = [
         HeroCandidateAction(
             key="fold",
-            label="Fold",
+            label=format_action(HeroActionKind.FOLD, game_state),
             kind=HeroActionKind.FOLD,
             additional_investment=0.0,
             target_round_contribution=hero.round_contribution,
@@ -62,7 +74,12 @@ def generate_candidate_actions(game_state: GameState) -> tuple[HeroCandidateActi
         candidates.append(
             HeroCandidateAction(
                 key="all_in_call",
-                label="All-in call",
+                label=format_action(
+                    HeroActionKind.ALL_IN,
+                    game_state,
+                    additional_investment=stack,
+                    target_round_contribution=hero.round_contribution + stack,
+                ),
                 kind=HeroActionKind.ALL_IN,
                 additional_investment=stack,
                 target_round_contribution=hero.round_contribution + stack,
@@ -72,7 +89,11 @@ def generate_candidate_actions(game_state: GameState) -> tuple[HeroCandidateActi
     candidates.append(
         HeroCandidateAction(
             key="call",
-            label="Call",
+            label=format_action(
+                HeroActionKind.CALL,
+                game_state,
+                additional_investment=call_amount,
+            ),
             kind=HeroActionKind.CALL,
             additional_investment=call_amount,
             target_round_contribution=hero.round_contribution + call_amount,
@@ -93,14 +114,19 @@ def generate_candidate_actions(game_state: GameState) -> tuple[HeroCandidateActi
         ),
     )
     maximum_target = hero.round_contribution + stack
-    for key, label, target in targets:
+    for key, _label, target in targets:
         capped_target = min(maximum_target, max(target, highest + minimum_increment))
         investment = capped_target - hero.round_contribution
         if investment < stack:
             candidates.append(
                 HeroCandidateAction(
                     key=key,
-                    label=label,
+                    label=format_action(
+                        HeroActionKind.RAISE,
+                        game_state,
+                        additional_investment=investment,
+                        target_round_contribution=capped_target,
+                    ),
                     kind=HeroActionKind.RAISE,
                     additional_investment=investment,
                     target_round_contribution=capped_target,
@@ -109,7 +135,12 @@ def generate_candidate_actions(game_state: GameState) -> tuple[HeroCandidateActi
     candidates.append(
         HeroCandidateAction(
             key="all_in",
-            label="All-in",
+            label=format_action(
+                HeroActionKind.ALL_IN,
+                game_state,
+                additional_investment=stack,
+                target_round_contribution=maximum_target,
+            ),
             kind=HeroActionKind.ALL_IN,
             additional_investment=stack,
             target_round_contribution=maximum_target,

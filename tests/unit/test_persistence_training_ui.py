@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from poker_trainer.models import Card, GameState, OpponentProfile, Position
+from poker_trainer.models import ActionAwareSettings, Card, GameState, OpponentProfile, Position
 from poker_trainer.services.analysis_service import analyze_game_state
 from poker_trainer.services.export_service import export_analysis_json, export_analysis_markdown
 from poker_trainer.services.settings_service import UserSettings, load_settings, save_settings
@@ -166,21 +166,78 @@ def test_invalid_settings_are_rejected(tmp_path: Path) -> None:
 
 
 def test_export_contents(tmp_path: Path) -> None:
-    result = analyze_game_state(state(), simulation_count=100, seed=1)
+    result = analyze_game_state(
+        state(),
+        simulation_count=100,
+        seed=1,
+        include_action_aware=True,
+        action_aware_settings=ActionAwareSettings(simulations_per_action=20),
+    )
     markdown = export_analysis_markdown(result, tmp_path / "analysis.md")
     json_path = export_analysis_json(result, tmp_path / "analysis.json")
 
-    assert "Peaceful Poker Analysis" in markdown.read_text(encoding="utf-8")
-    assert "recommendation" in json_path.read_text(encoding="utf-8")
+    markdown_text = markdown.read_text(encoding="utf-8")
+    payload = json.loads(json_path.read_text(encoding="utf-8"))
+    assert "Peaceful Poker Analysis" in markdown_text
+    assert result.recommendation.primary_action in markdown_text
+    assert payload["recommendation"] == result.recommendation.primary_action
+    assert result.action_aware is not None
+    assert payload["action_aware"]["recommended_action"] == result.action_aware.recommended_action
+    assert [item["action"] for item in payload["action_aware"]["actions"]] == [
+        item.candidate.label for item in result.action_aware.action_results
+    ]
+    assert all(item.candidate.label in markdown_text for item in result.action_aware.action_results)
 
 
 def test_training_scenario_uses_real_analysis() -> None:
     scenario = generate_scenario(TrainingDifficulty.BEGINNER, seed=1)
 
-    assert scenario.analysis.recommendation.primary_action in scenario.legal_action_labels
     assert scenario.analysis.action_aware is not None
+    assert scenario.analysis.action_aware.recommended_action in scenario.legal_action_labels
     assert scenario.game_state.active_players >= 2
     assert "remain to act behind hero" in scenario.action_order_explanation
+
+
+def test_training_aces_scenario_uses_full_corrected_candidate_engine() -> None:
+    selected_seed = next(
+        seed
+        for seed in range(100)
+        if generate_training_state(
+            TrainingDifficulty.BEGINNER,
+            seed=seed,
+            situation=TrainingSituation.LAST_TO_ACT,
+        ).hero_cards
+        == cards("AH AD")
+    )
+    scenario = generate_scenario(
+        TrainingDifficulty.BEGINNER,
+        seed=selected_seed,
+        situation=TrainingSituation.LAST_TO_ACT,
+    )
+
+    assert scenario.game_state.hero_cards == cards("AH AD")
+    assert scenario.game_state.community_cards == cards("7C 2D 9S")
+    assert scenario.analysis.action_aware is not None
+    assert scenario.legal_action_labels == tuple(
+        item.candidate.label for item in scenario.analysis.action_aware.action_results
+    )
+    assert {"Bet 25 chips", "Bet 100 chips", "Bet 150 chips"} <= set(scenario.legal_action_labels)
+    assert scenario.analysis.action_aware.recommended_action in scenario.legal_action_labels
+
+
+def test_training_states_are_reproducible_unique_and_cover_every_street() -> None:
+    states = [generate_training_state(TrainingDifficulty.BEGINNER, seed=seed) for seed in range(40)]
+    repeated = generate_training_state(TrainingDifficulty.INTERMEDIATE, seed=17)
+
+    assert repeated == generate_training_state(TrainingDifficulty.INTERMEDIATE, seed=17)
+    assert {len(state.community_cards) for state in states} == {0, 3, 4, 5}
+    for game_state in states:
+        assert len(set(game_state.known_cards)) == len(game_state.known_cards)
+        assert game_state.active_players >= 2
+        assert game_state.pot_size >= 0
+        assert 0 <= game_state.amount_to_call <= game_state.hero_stack
+        assert game_state.table_state is not None
+        assert game_state.table_state.current_actor_seat == game_state.table_state.hero_seat
 
 
 @pytest.mark.parametrize(

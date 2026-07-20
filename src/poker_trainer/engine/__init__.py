@@ -3,6 +3,8 @@
 from poker_trainer.engine.action_aware_simulator import (
     action_aware_preset,
     calculate_action_aware_ev,
+    heads_up_showdown_net,
+    uncontested_net_win,
 )
 from poker_trainer.engine.board_analyzer import analyze_board
 from poker_trainer.engine.current_hand import analyze_current_hand
@@ -28,4 +30,6 @@ __all__ = [
     "evaluate_best_hand",
     "evaluate_five_card_hand",
     "evaluate_hand_score",
+    "heads_up_showdown_net",
+    "uncontested_net_win",
 ]

@@ -90,7 +90,7 @@ def test_scenario_b_strong_draw_bet_models_all_response_branches() -> None:
     scenario = game_state(table)
 
     result = calculate_action_aware_ev(scenario, settings(500), seed=41)
-    bet = next(item for item in result.action_results if item.candidate.label == "Bet 50% pot")
+    bet = next(item for item in result.action_results if item.candidate.key == "bet_50")
 
     assert len(table.players_after_hero()) == 3
     assert 0.0 < bet.immediate_fold_probability < 1.0
@@ -159,9 +159,9 @@ def test_scenario_d_profiles_change_frequencies_and_recommendation() -> None:
 
     tight = analyze(OpponentProfile.TIGHT_PASSIVE)
     loose_aggressive = analyze(OpponentProfile.LOOSE_AGGRESSIVE)
-    tight_bet = next(item for item in tight.action_results if item.candidate.label == "Bet 50% pot")
+    tight_bet = next(item for item in tight.action_results if item.candidate.key == "bet_50")
     loose_bet = next(
-        item for item in loose_aggressive.action_results if item.candidate.label == "Bet 50% pot"
+        item for item in loose_aggressive.action_results if item.candidate.key == "bet_50"
     )
 
     assert tight_bet.immediate_fold_probability > loose_bet.immediate_fold_probability
@@ -215,5 +215,5 @@ def test_adding_two_players_behind_changes_the_recommendation() -> None:
     hero_last = analyze(0)
     two_behind = analyze(2)
 
-    assert hero_last.recommended_action == "Minimum raise"
+    assert hero_last.recommended_action == "Raise to 60 chips"
     assert two_behind.recommended_action == "Fold"

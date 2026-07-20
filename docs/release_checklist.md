@@ -1,7 +1,8 @@
 # Peaceful Poker 1.1.0 Release Checklist
 
 - [x] Install editable development and build extras
-- [x] Pass 182 tests with `-p no:cacheprovider` and no project warnings
+- [x] Pass 228 baseline tests with `-p no:cacheprovider` before release work
+- [x] Pass 231 final tests with `-p no:cacheprovider` after release work
 - [x] Pass Ruff format and lint checks
 - [x] Pass strict Mypy across 42 source files
 - [x] Pass `pip check`
@@ -14,6 +15,10 @@
 - [x] Build `dist\Peaceful Poker\Peaceful Poker.exe`
 - [x] Run independent packaged raw/action-aware smoke analysis and save verification
 - [x] Confirm release metadata, CI workflow, documentation, and clean stale-content search
+- [x] Rebuild the final one-folder application and pass the expanded packaged smoke test twice
+- [x] Launch a copied one-folder build outside the repository with Qt variables cleared
+- [x] Create, extract, smoke-test, and checksum the versioned portable ZIP
+- [ ] Build and checksum the Inno Setup installer when Inno Setup 6 is available
 
 Measured action-aware benchmark times on the release machine (Python 3.14.6, Windows 11) were:
 

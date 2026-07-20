@@ -41,19 +41,20 @@ def export_analysis_markdown(result: AnalysisResult, path: Path) -> Path:
                 "These EV estimates depend on entered opponent profiles and are not exact "
                 "predictions.",
                 f"Recommended action: {result.action_aware.recommended_action}",
+                f"Second-best action: {result.action_aware.second_best_action or 'None'}",
+                "EV gap: "
+                + (
+                    f"{result.action_aware.ev_difference:.2f} chips"
+                    if result.action_aware.ev_difference is not None
+                    else "Unavailable"
+                ),
                 "",
-                "| Action | Net EV | 95% CI | All fold | Continue | Faces raise | Called equity |",
-                "|---|---:|---:|---:|---:|---:|---:|",
+                "| Action | Pot % | Invest | Fold | Call | Raise | Called equity | "
+                "Fold EV | Call EV | Raise EV | Net EV | 95% CI |",
+                "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
             ]
         )
-        lines.extend(
-            f"| {item.candidate.label} | {item.estimated_net_ev:.2f} | "
-            f"{item.confidence_interval_low:.2f} to {item.confidence_interval_high:.2f} | "
-            f"{item.immediate_fold_probability:.2%} | {item.continue_probability:.2%} | "
-            f"{item.facing_raise_probability:.2%} | "
-            f"{item.conditional_showdown_equity:.2%} |"
-            for item in result.action_aware.action_results
-        )
+        lines.extend(_action_markdown_row(item) for item in result.action_aware.action_results)
     path.write_text("\n".join(lines), encoding="utf-8")
     return path
 
@@ -75,6 +76,10 @@ def export_analysis_json(result: AnalysisResult, path: Path) -> Path:
     if result.action_aware is not None:
         payload["action_aware"] = {
             "recommended_action": result.action_aware.recommended_action,
+            "second_best_action": result.action_aware.second_best_action,
+            "ev_difference": result.action_aware.ev_difference,
+            "result_is_close": result.action_aware.result_is_close,
+            "all_in_recommended": result.action_aware.all_in_recommended,
             "uncertainty_note": result.action_aware.uncertainty_note,
             "simulations_per_action": result.action_aware.simulations_per_action,
             "assumptions": result.action_aware.assumptions,
@@ -88,17 +93,45 @@ def export_analysis_json(result: AnalysisResult, path: Path) -> Path:
                         item.confidence_interval_high,
                     ],
                     "all_fold": item.immediate_fold_probability,
+                    "call": item.call_probability,
                     "continue": item.continue_probability,
                     "exactly_one_continues": item.exactly_one_continues_probability,
                     "multiple_continue": item.multiple_continue_probability,
                     "faces_raise": item.facing_raise_probability,
                     "showdown": item.showdown_probability,
                     "conditional_showdown_equity": item.conditional_showdown_equity,
+                    "conditional_call_equity": item.conditional_call_equity,
+                    "conditional_raise_equity": item.conditional_raise_equity,
+                    "average_calling_range_strength": item.average_calling_range_strength,
+                    "average_raising_range_strength": item.average_raising_range_strength,
+                    "fold_ev_component": item.fold_ev_component,
+                    "call_ev_component": item.call_ev_component,
+                    "raise_ev_component": item.raise_ev_component,
+                    "fold_branch_net_ev": item.fold_branch_net_ev,
+                    "call_branch_net_ev": item.call_branch_net_ev,
+                    "raise_branch_net_ev": item.raise_branch_net_ev,
+                    "bet_percentage_of_pot": item.bet_percentage_of_pot,
                     "average_final_pot": item.average_final_pot,
                     "average_hero_investment": item.average_hero_investment,
+                    "modelling_warnings": item.modelling_warnings,
                 }
                 for item in result.action_aware.action_results
             ],
         }
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     return path
+
+
+def _action_markdown_row(item: Any) -> str:
+    pot_percentage = (
+        "N/A" if item.bet_percentage_of_pot is None else f"{item.bet_percentage_of_pot:.1f}%"
+    )
+    return (
+        f"| {item.candidate.label} | {pot_percentage} | "
+        f"{item.average_hero_investment:.2f} | {item.immediate_fold_probability:.2%} | "
+        f"{item.call_probability:.2%} | {item.facing_raise_probability:.2%} | "
+        f"{item.conditional_call_equity:.2%} | {item.fold_ev_component:.2f} | "
+        f"{item.call_ev_component:.2f} | {item.raise_ev_component:.2f} | "
+        f"{item.estimated_net_ev:.2f} | {item.confidence_interval_low:.2f} to "
+        f"{item.confidence_interval_high:.2f} |"
+    )

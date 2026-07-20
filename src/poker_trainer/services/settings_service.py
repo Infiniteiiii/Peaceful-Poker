@@ -16,6 +16,7 @@ class UserSettings:
     """Persistent application settings."""
 
     theme: str = "light"
+    advanced_mode: bool = False
     automatic_analysis: bool = False
     default_player_count: int = 6
     default_simulation_count: int = 25_000

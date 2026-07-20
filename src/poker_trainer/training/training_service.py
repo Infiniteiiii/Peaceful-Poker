@@ -47,7 +47,7 @@ def generate_scenario(
     seed: int | None = None,
     situation: TrainingSituation | None = None,
 ) -> TrainingScenario:
-    """Generate a deterministic valid training scenario from a small curated set."""
+    """Generate a deterministic valid training scenario from curated decision families."""
     selected = situation or _choose_situation(difficulty, Random(seed))
     state = generate_training_state(difficulty, seed, selected)
     analysis = analyze_game_state(
@@ -62,7 +62,11 @@ def generate_scenario(
         difficulty=difficulty,
         situation=selected,
         game_state=state,
-        legal_action_labels=analysis.recommendation.legal_alternatives,
+        legal_action_labels=tuple(
+            item.candidate.label for item in analysis.action_aware.action_results
+        )
+        if analysis.action_aware is not None
+        else analysis.recommendation.legal_alternatives,
         analysis=analysis,
         action_order_explanation=(
             f"{len(behind)} opponent(s) remain to act behind hero. Their profiles can change "
@@ -81,16 +85,25 @@ def generate_training_state(
     selected = situation or _choose_situation(difficulty, rng)
     scenarios = {
         TrainingDifficulty.BEGINNER: [
+            ("AS KS", "", 2, 30.0, 10.0, 100.0, 100.0),
             ("AS KS", "QS 10D 4S", 6, 140.0, 40.0, 900.0, 620.0),
             ("AH AD", "7C 2D 9S", 2, 100.0, 0.0, 500.0, 500.0),
+            ("KH QH", "JS 8D 2H 4C", 3, 120.0, 30.0, 240.0, 180.0),
+            ("AC 10C", "AD 7S 4H 2C 9D", 2, 180.0, 60.0, 300.0, 260.0),
         ],
         TrainingDifficulty.INTERMEDIATE: [
+            ("QD QS", "", 4, 45.0, 15.0, 300.0, 240.0),
             ("9S 8S", "7S 6D 2C", 3, 120.0, 30.0, 700.0, 650.0),
             ("QC JD", "10S 9H 2D", 4, 180.0, 60.0, 800.0, 700.0),
+            ("AH JH", "10H 8C 3H 2S", 5, 210.0, 70.0, 420.0, 360.0),
+            ("8C 7C", "KS 9D 6H 5C 2S", 3, 260.0, 0.0, 380.0, 300.0),
         ],
         TrainingDifficulty.ADVANCED: [
+            ("5C 4C", "", 6, 75.0, 25.0, 180.0, 120.0),
             ("AS 5S", "KS 7S 7D", 5, 220.0, 90.0, 850.0, 620.0),
             ("6C 6D", "AS KD 9H", 6, 160.0, 55.0, 600.0, 600.0),
+            ("JC 10C", "9C 8D 3C QH", 4, 310.0, 110.0, 520.0, 410.0),
+            ("2S 2H", "AD KC 10D 7S 4C", 5, 400.0, 140.0, 260.0, 220.0),
         ],
     }
     hero, board, players, pot, call, stack, effective = rng.choice(scenarios[difficulty])

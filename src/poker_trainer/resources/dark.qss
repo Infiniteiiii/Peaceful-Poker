@@ -443,4 +443,155 @@ QLabel#cardPickerRankText:disabled,
 QLabel#cardPickerSuitText:disabled {
     color: __TEXT_DISABLED__;
 }
+QPushButton[toolbarButton="true"] {
+    padding-left: 8px;
+    padding-right: 8px;
+}
+
+/* ========== CONTEXT HELP, VALIDATION, RESULTS, TRAINING ========== */
+QToolButton#infoButton {
+    min-width: 18px;
+    max-width: 18px;
+    min-height: 18px;
+    max-height: 18px;
+    padding: 0;
+    border: 1px solid __BORDER_SUBTLE__;
+    border-radius: 9px;
+    color: __TEXT_SECONDARY__;
+    background: __BG_SURFACE_RAISED__;
+    font-size: 11px;
+    font-weight: 700;
+}
+QToolButton#infoButton:hover,
+QToolButton#infoButton:focus {
+    color: __ACCENT_PRIMARY__;
+    border-color: __ACCENT_PRIMARY__;
+}
+QLabel#requiredLegend {
+    color: __TEXT_SECONDARY__;
+    font-size: 11px;
+}
+QLineEdit[validationError="true"],
+QAbstractSpinBox[validationError="true"] {
+    border: 2px solid __ACCENT_NEGATIVE__;
+}
+QCheckBox#modeToggle {
+    spacing: 7px;
+    color: __TEXT_PRIMARY__;
+    font-weight: 600;
+}
+QFrame#decisionSummary,
+QFrame#resultBlock,
+QFrame#trainingPanel {
+    background: __BG_SURFACE__;
+    border: 1px solid __BORDER_SUBTLE__;
+    border-radius: 8px;
+    padding: 12px;
+    color: __TEXT_PRIMARY__;
+}
+QFrame#decisionSummary {
+    border-left: 4px solid __ACCENT_PRIMARY__;
+}
+QLabel#resultBlockTitle {
+    font-size: 15px;
+    font-weight: 700;
+    color: __TEXT_PRIMARY__;
+    background: transparent;
+    border: none;
+}
+QLabel#resultBlockBody,
+QLabel#trainingScenario,
+QLabel#trainingFeedback {
+    color: __TEXT_SECONDARY__;
+    background: transparent;
+    border: none;
+}
+QRadioButton#trainingChoice {
+    color: __TEXT_PRIMARY__;
+    background: __BG_SURFACE_RAISED__;
+    border: 1px solid __BORDER_SUBTLE__;
+    border-radius: 8px;
+    padding: 7px 10px;
+    spacing: 9px;
+}
+QRadioButton#trainingChoice:hover,
+QRadioButton#trainingChoice:focus {
+    border-color: __ACCENT_PRIMARY__;
+}
+QRadioButton#trainingChoice::indicator {
+    width: 16px;
+    height: 16px;
+    border: 2px solid __TEXT_SECONDARY__;
+    border-radius: 9px;
+    background: transparent;
+}
+QRadioButton#trainingChoice::indicator:checked {
+    border: 5px solid __ACCENT_PRIMARY__;
+    background: __BG_SURFACE__;
+}
+QLabel#trainingResultBadge {
+    border-radius: 6px;
+    padding: 7px 12px;
+    font-weight: 700;
+}
+QLabel#trainingResultBadge[result="correct"] {
+    color: #86EFAC;
+    background: #163A27;
+    border: 1px solid #238636;
+}
+QLabel#trainingResultBadge[result="incorrect"] {
+    color: #FCA5A5;
+    background: #451A1A;
+    border: 1px solid #DA3633;
+}
+QFrame#actionComparisonCard {
+    background: __BG_SURFACE__;
+    border: 1px solid __BORDER_SUBTLE__;
+    border-radius: 8px;
+}
+QFrame#actionComparisonCard[recommended="true"] {
+    border: 2px solid __ACCENT_PRIMARY__;
+}
+QProgressBar#actionEvBar {
+    border: none;
+    border-radius: 4px;
+    background: __BG_SURFACE_RAISED__;
+}
+QProgressBar#actionEvBar[barKind="positive"]::chunk {
+    background: __ACCENT_PRIMARY__;
+}
+QProgressBar#actionEvBar[barKind="negative"]::chunk {
+    background: __ACCENT_NEGATIVE__;
+}
+QLabel#actionComparisonDetails {
+    color: __TEXT_SECONDARY__;
+    background: transparent;
+    border: none;
+}
+QLabel#terminologyHeading {
+    color: __TEXT_PRIMARY__;
+    font-size: 15px;
+    font-weight: 700;
+    background: transparent;
+}
+QScrollArea#terminologyScrollArea,
+QWidget#terminologyContent {
+    background: transparent;
+    border: none;
+}
+QFrame#terminologyCard {
+    background: __BG_SURFACE__;
+    border: 1px solid __BORDER_SUBTLE__;
+    border-radius: 8px;
+}
+QLabel#glossaryTerm {
+    color: __TEXT_PRIMARY__;
+    font-weight: 700;
+    background: transparent;
+}
+QLabel#glossaryDefinition {
+    color: __TEXT_SECONDARY__;
+    font-weight: 400;
+    background: transparent;
+}
 

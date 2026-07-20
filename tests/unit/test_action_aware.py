@@ -5,7 +5,11 @@ from math import sqrt
 
 import pytest
 
-from poker_trainer.engine.action_aware_simulator import calculate_action_aware_ev
+from poker_trainer.engine.action_aware_simulator import (
+    calculate_action_aware_ev,
+    heads_up_showdown_net,
+    uncontested_net_win,
+)
 from poker_trainer.engine.board_analyzer import analyze_board
 from poker_trainer.engine.candidate_actions import generate_candidate_actions
 from poker_trainer.engine.equity_calculator import calculate_equity
@@ -108,7 +112,7 @@ def policy_player(profile: OpponentProfile) -> TablePlayer:
 
 def context(amount_to_call: float) -> PolicyContext:
     return PolicyContext(
-        pot_size=100.0,
+        pot_size=100.0 + amount_to_call,
         amount_to_call=amount_to_call,
         minimum_raise=20.0,
         board_analysis=analyze_board(cards("QH 7D 2C")),
@@ -117,6 +121,11 @@ def context(amount_to_call: float) -> PolicyContext:
         prior_aggression=0,
         raises_so_far=0,
         maximum_raises=1,
+        pot_before_action=100.0,
+        hero_action_kind=HeroActionKind.BET,
+        hero_additional_investment=amount_to_call,
+        hero_all_in=amount_to_call >= 500.0,
+        street="flop",
     )
 
 
@@ -255,9 +264,9 @@ def test_candidate_actions_cover_checked_to_and_facing_bet() -> None:
 
     assert checked[0].kind is HeroActionKind.CHECK
     assert {candidate.label for candidate in checked} >= {
-        "Bet 25% pot",
-        "Bet 100% pot",
-        "All-in",
+        "Bet 30 chips",
+        "Bet 120 chips",
+        "Bet all-in \u2014 500 chips",
     }
     assert {candidate.kind for candidate in facing} >= {
         HeroActionKind.FOLD,
@@ -268,15 +277,213 @@ def test_candidate_actions_cover_checked_to_and_facing_bet() -> None:
     assert len({candidate.additional_investment for candidate in facing[2:]}) == len(facing[2:])
 
 
+def test_checked_to_candidates_cover_realistic_sizes_and_respect_effective_stack() -> None:
+    game_state = GameState(
+        active_players=2,
+        hero_cards=cards("AD AH"),
+        community_cards=cards("7C 2D 9S"),
+        hero_position=Position.BUTTON,
+        pot_size=100.0,
+        hero_stack=500.0,
+        effective_stack=180.0,
+        big_blind=10.0,
+    )
+    candidates = generate_candidate_actions(game_state)
+
+    assert [candidate.key for candidate in candidates] == [
+        "check",
+        "bet_25",
+        "bet_33",
+        "bet_50",
+        "bet_66",
+        "bet_75",
+        "bet_100",
+        "bet_150",
+        "all_in",
+    ]
+    assert all(candidate.additional_investment <= 180.0 for candidate in candidates)
+    assert len({candidate.additional_investment for candidate in candidates[1:]}) == 8
+    assert candidates[-1].label == "Bet all-in — 180 chips"
+
+
+@pytest.mark.parametrize(
+    ("share", "expected"),
+    [(1.0, 150.0), (0.0, -50.0), (0.5, 50.0)],
+)
+def test_direct_heads_up_win_loss_and_tie_branches(share: float, expected: float) -> None:
+    assert heads_up_showdown_net(100.0, 50.0, 50.0, share) == expected
+
+
+def test_direct_fold_and_called_ev_conventions() -> None:
+    equity = 0.80
+
+    assert uncontested_net_win(100.0) == 100.0
+    assert heads_up_showdown_net(100.0, 50.0, 50.0, equity) == pytest.approx(
+        equity * (100.0 + 50.0) - (1.0 - equity) * 50.0
+    )
+
+
+def test_neutral_policy_treats_stack_capped_call_as_size_sensitive() -> None:
+    player = policy_player(OpponentProfile.UNKNOWN_BALANCED)
+    hole = (Card.from_code("JC"), Card.from_code("9C"))
+    small = opponent_action_distribution(player, hole, cards("QH 7D 2C"), context(25.0))
+    shove = opponent_action_distribution(player, hole, cards("QH 7D 2C"), context(500.0))
+    small_continue = 1.0 - small.probabilities[OpponentAction.FOLD]
+    shove_continue = 1.0 - shove.probabilities[OpponentAction.FOLD]
+
+    assert shove.probabilities[OpponentAction.FOLD] > small.probabilities[OpponentAction.FOLD]
+    assert shove_continue < small_continue
+    assert sum(shove.probabilities.values()) == pytest.approx(1.0)
+
+
+def test_aces_scenario_uses_size_specific_ranges_and_ev_components() -> None:
+    game_state = GameState(
+        active_players=2,
+        hero_cards=cards("AD AH"),
+        community_cards=cards("7C 2D 9S"),
+        hero_position=Position.BUTTON,
+        pot_size=100.0,
+        amount_to_call=0.0,
+        hero_stack=500.0,
+        effective_stack=500.0,
+        small_blind=5.0,
+        big_blind=10.0,
+    )
+    result = calculate_action_aware_ev(game_state, quick(1_500), seed=7)
+    small = next(item for item in result.action_results if item.candidate.key == "bet_25")
+    pot_bet = next(item for item in result.action_results if item.candidate.key == "bet_100")
+    shove = next(item for item in result.action_results if item.candidate.key == "all_in")
+
+    assert {item.candidate.key for item in result.action_results} >= {
+        "check",
+        "bet_25",
+        "bet_33",
+        "bet_50",
+        "bet_66",
+        "bet_75",
+        "bet_100",
+        "bet_150",
+        "all_in",
+    }
+    assert small.immediate_fold_probability < pot_bet.immediate_fold_probability
+    assert pot_bet.immediate_fold_probability < shove.immediate_fold_probability
+    assert small.call_probability > pot_bet.call_probability > shove.call_probability
+    assert small.average_calling_range_strength < shove.average_calling_range_strength
+    assert small.conditional_call_equity > shove.conditional_call_equity
+    assert shove.fold_branch_net_ev == game_state.pot_size
+    assert result.recommended_action != shove.candidate.label
+    for item in result.action_results:
+        if item.candidate.kind is HeroActionKind.FOLD:
+            continue
+        assert (
+            item.immediate_fold_probability + item.call_probability + item.facing_raise_probability
+        ) == pytest.approx(1.0)
+        assert (
+            item.fold_ev_component + item.call_ev_component + item.raise_ev_component
+        ) == pytest.approx(item.estimated_net_ev)
+
+
+def test_short_stack_all_in_is_distinct_and_correctly_labelled() -> None:
+    game_state = GameState(
+        active_players=2,
+        hero_cards=cards("AD AH"),
+        community_cards=cards("7C 2D 9S"),
+        hero_position=Position.BUTTON,
+        pot_size=100.0,
+        hero_stack=500.0,
+        effective_stack=40.0,
+        big_blind=10.0,
+    )
+    candidates = generate_candidate_actions(game_state)
+
+    assert candidates[-1].kind is HeroActionKind.ALL_IN
+    assert candidates[-1].additional_investment == 40.0
+    assert candidates[-1].label == "Bet all-in — 40 chips"
+    assert len({candidate.additional_investment for candidate in candidates[1:]}) == len(
+        candidates[1:]
+    )
+
+
+def test_weak_bluff_does_not_gain_from_constant_fold_assumptions() -> None:
+    game_state = GameState(
+        active_players=2,
+        hero_cards=cards("3C 4D"),
+        community_cards=cards("AH KD 9S"),
+        hero_position=Position.BUTTON,
+        pot_size=100.0,
+        hero_stack=500.0,
+        effective_stack=500.0,
+        big_blind=10.0,
+    )
+    result = calculate_action_aware_ev(game_state, quick(800), seed=19)
+    small = next(item for item in result.action_results if item.candidate.key == "bet_25")
+    shove = next(item for item in result.action_results if item.candidate.key == "all_in")
+
+    assert shove.immediate_fold_probability > small.immediate_fold_probability
+    assert shove.call_probability < small.call_probability
+    assert shove.average_calling_range_strength > small.average_calling_range_strength
+    assert result.recommended_action != shove.candidate.label
+
+
+def test_facing_bet_uses_raise_to_and_additional_investment_conventions() -> None:
+    game_state = GameState(
+        active_players=2,
+        hero_cards=cards("AD AH"),
+        community_cards=cards("7C 2D 9S"),
+        hero_position=Position.BUTTON,
+        pot_size=100.0,
+        amount_to_call=30.0,
+        hero_stack=200.0,
+        effective_stack=120.0,
+        big_blind=10.0,
+    )
+    candidates = generate_candidate_actions(game_state)
+    raises = tuple(candidate for candidate in candidates if candidate.kind is HeroActionKind.RAISE)
+    all_in = next(candidate for candidate in candidates if candidate.kind is HeroActionKind.ALL_IN)
+
+    assert raises
+    assert all(
+        candidate.label == f"Raise to {candidate.target_round_contribution:g} chips"
+        for candidate in raises
+    )
+    assert all(
+        candidate.additional_investment == candidate.target_round_contribution
+        for candidate in raises
+    )
+    assert all_in.additional_investment == 120.0
+    assert all_in.target_round_contribution == 120.0
+    assert all_in.label == "Raise all-in to 120 chips"
+
+
 def test_all_opponents_folding_awards_current_pot_without_double_counting_bet() -> None:
     game_state = state()
     result = calculate_action_aware_ev(game_state, quick(50), seed=1, policy_callback=force_fold)
-    bet = next(item for item in result.action_results if item.candidate.label == "Bet 50% pot")
+    bet = next(item for item in result.action_results if item.candidate.key == "bet_50")
 
     assert bet.immediate_fold_probability == 1.0
     assert bet.continue_probability == 0.0
     assert bet.estimated_net_ev == game_state.pot_size
     assert bet.average_hero_investment == pytest.approx(game_state.pot_size * 0.50)
+    assert bet.average_final_pot == game_state.pot_size
+
+
+def test_matched_call_final_pot_and_investment_are_exact() -> None:
+    game_state = GameState(
+        active_players=2,
+        hero_cards=cards("AD AH"),
+        community_cards=cards("7C 2D 9S"),
+        hero_position=Position.BUTTON,
+        pot_size=100.0,
+        hero_stack=500.0,
+        effective_stack=500.0,
+        big_blind=10.0,
+    )
+    result = calculate_action_aware_ev(game_state, quick(50), seed=14, policy_callback=force_call)
+    half_pot = next(item for item in result.action_results if item.candidate.key == "bet_50")
+
+    assert half_pot.average_hero_investment == 50.0
+    assert half_pot.average_final_pot == 200.0
+    assert half_pot.call_probability == 1.0
 
 
 def test_fold_has_zero_future_ev_and_investments_are_stack_capped() -> None:
@@ -297,13 +504,9 @@ def test_same_seed_is_reproducible_and_confidence_shrinks() -> None:
     first = calculate_action_aware_ev(game_state, quick(150), seed=33, policy_callback=force_call)
     second = calculate_action_aware_ev(game_state, quick(150), seed=33, policy_callback=force_call)
     larger = calculate_action_aware_ev(game_state, quick(900), seed=33, policy_callback=force_call)
-    first_bet = next(item for item in first.action_results if item.candidate.label == "Bet 50% pot")
-    second_bet = next(
-        item for item in second.action_results if item.candidate.label == "Bet 50% pot"
-    )
-    larger_bet = next(
-        item for item in larger.action_results if item.candidate.label == "Bet 50% pot"
-    )
+    first_bet = next(item for item in first.action_results if item.candidate.key == "bet_50")
+    second_bet = next(item for item in second.action_results if item.candidate.key == "bet_50")
+    larger_bet = next(item for item in larger.action_results if item.candidate.key == "bet_50")
 
     assert first_bet == second_bet
     assert larger_bet.standard_error < first_bet.standard_error
@@ -313,10 +516,8 @@ def test_different_seeds_remain_within_combined_sampling_uncertainty() -> None:
     game_state = state()
     first = calculate_action_aware_ev(game_state, quick(600), seed=101, policy_callback=force_call)
     second = calculate_action_aware_ev(game_state, quick(600), seed=202, policy_callback=force_call)
-    first_bet = next(item for item in first.action_results if item.candidate.label == "Bet 50% pot")
-    second_bet = next(
-        item for item in second.action_results if item.candidate.label == "Bet 50% pot"
-    )
+    first_bet = next(item for item in first.action_results if item.candidate.key == "bet_50")
+    second_bet = next(item for item in second.action_results if item.candidate.key == "bet_50")
     combined_standard_error = sqrt(first_bet.standard_error**2 + second_bet.standard_error**2)
 
     assert abs(first_bet.estimated_net_ev - second_bet.estimated_net_ev) <= (
@@ -344,12 +545,8 @@ def test_players_behind_change_action_frequencies() -> None:
         quick(300),
         seed=9,
     )
-    tight_bet = next(
-        item for item in tight_result.action_results if item.candidate.label == "Bet 50% pot"
-    )
-    loose_bet = next(
-        item for item in loose_result.action_results if item.candidate.label == "Bet 50% pot"
-    )
+    tight_bet = next(item for item in tight_result.action_results if item.candidate.key == "bet_50")
+    loose_bet = next(item for item in loose_result.action_results if item.candidate.key == "bet_50")
 
     assert tight_bet.immediate_fold_probability > loose_bet.immediate_fold_probability
     assert tight_bet.facing_raise_probability < loose_bet.facing_raise_probability
@@ -466,7 +663,7 @@ def test_prior_bettor_remains_when_player_behind_folds() -> None:
 def test_raises_reopen_action_and_increase_final_pot() -> None:
     game_state = state()
     result = calculate_action_aware_ev(game_state, quick(100), seed=12, policy_callback=force_raise)
-    bet = next(item for item in result.action_results if item.candidate.label == "Bet 50% pot")
+    bet = next(item for item in result.action_results if item.candidate.key == "bet_50")
 
     assert bet.facing_raise_probability == 1.0
     assert bet.average_final_pot > game_state.pot_size + bet.candidate.additional_investment
@@ -492,10 +689,10 @@ def test_short_all_in_cannot_win_unmatched_side_pot() -> None:
         table_state=replace(base, players=players),
     )
     result = calculate_action_aware_ev(game_state, quick(50), seed=20, policy_callback=force_call)
-    all_in = next(item for item in result.action_results if item.candidate.label == "All-in")
+    all_in = next(item for item in result.action_results if item.candidate.key == "all_in")
 
     assert all_in.estimated_net_ev == 50.0
-    assert all_in.average_hero_investment == 500.0
+    assert all_in.average_hero_investment == 50.0
 
 
 def test_action_aware_cancellation_is_prompt() -> None:

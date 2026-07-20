@@ -4,12 +4,14 @@ import json
 from collections import Counter
 from dataclasses import dataclass
 from functools import lru_cache
+from math import exp, log1p
 from typing import Any
 
 from poker_trainer.engine.board_analyzer import BoardAnalysis, OverallTexture
 from poker_trainer.engine.hand_evaluator import evaluate_hand_score
 from poker_trainer.models.action_aware import (
     ActionDistribution,
+    HeroActionKind,
     OpponentAction,
     OpponentProfile,
     PolicyProfile,
@@ -35,10 +37,25 @@ class PolicyContext:
     prior_aggression: int
     raises_so_far: int
     maximum_raises: int
+    pot_before_action: float | None = None
+    hero_action_kind: HeroActionKind | None = None
+    hero_additional_investment: float = 0.0
+    hero_all_in: bool = False
+    street: str = ""
 
     def __post_init__(self) -> None:
-        if min(self.pot_size, self.amount_to_call, self.minimum_raise) < 0:
+        if (
+            min(
+                self.pot_size,
+                self.amount_to_call,
+                self.minimum_raise,
+                self.hero_additional_investment,
+            )
+            < 0
+        ):
             raise InvalidGameStateError("Policy betting inputs cannot be negative.")
+        if self.pot_before_action is not None and self.pot_before_action < 0:
+            raise InvalidGameStateError("The pot before an action cannot be negative.")
         if not 0 <= self.position_fraction <= 1:
             raise InvalidGameStateError("Position fraction must be from zero to one.")
 
@@ -131,7 +148,7 @@ def opponent_action_distribution(
         raise InvalidGameStateError("Folded, all-in, or ineligible players cannot act.")
     profile = profile_override or load_opponent_profiles()[player.profile]
     strength = classify_opponent_hand(hole_cards, board)
-    strength_value = _strength_value(strength)
+    strength_value = relative_hand_strength_value(strength)
     legal = legal_opponent_actions(player, context)
     if context.amount_to_call > 0:
         weights = _facing_bet_weights(player, profile, strength_value, legal, context)
@@ -186,8 +203,15 @@ def _facing_bet_weights(
     context: PolicyContext,
 ) -> dict[OpponentAction, float]:
     pot = max(context.pot_size, 1.0)
-    bet_fraction = context.amount_to_call / pot
-    spr = player.stack / pot
+    pot_before_action = max(
+        context.pot_before_action
+        if context.pot_before_action is not None
+        else context.pot_size - context.amount_to_call,
+        1.0,
+    )
+    bet_to_pot = context.amount_to_call / pot_before_action
+    pot_odds = context.amount_to_call / max(pot + context.amount_to_call, 1.0)
+    spr = player.stack / pot_before_action
     position_bonus = (context.position_fraction - 0.5) * profile.position_sensitivity * 0.2
     range_bonus = _range_strength_adjustment(player.range_text)
     board_penalty = _board_danger(context.board_analysis) * profile.board_sensitivity * 0.10
@@ -195,36 +219,58 @@ def _facing_bet_weights(
     effective_strength = _clamp(
         strength + position_bonus + range_bonus - board_penalty - multiway_penalty
     )
+    action_pressure = 0.08 if context.hero_action_kind is HeroActionKind.RAISE else 0.0
+    all_in_pressure = 0.16 if context.hero_all_in else 0.0
+    street_pressure = 0.05 if context.street in {"turn", "river"} else 0.0
     pressure = (
-        bet_fraction * profile.size_sensitivity
+        log1p(bet_to_pot) * profile.size_sensitivity
         + context.prior_aggression * profile.prior_aggression_sensitivity * 0.10
+        + action_pressure
+        + all_in_pressure
+        + street_pressure
+    )
+    fold_weight = max(
+        0.001,
+        (0.05 + (1.0 - effective_strength) ** 1.4 * (0.10 + 0.80 * profile.fold_bias**1.5))
+        * exp(pressure * (0.75 + (1.0 - effective_strength) * 0.55)),
+    )
+    call_weight = max(
+        0.001,
+        (0.32 + effective_strength * 1.4)
+        * profile.call_bias
+        * max(0.2, 1.0 - pot_odds * 0.35)
+        * exp(-pressure * (0.50 + (1.0 - effective_strength) * 0.55)),
     )
     weights: dict[OpponentAction, float] = {}
     if OpponentAction.FOLD in legal:
-        weights[OpponentAction.FOLD] = max(
-            0.001, (1.12 - effective_strength) * (0.35 + profile.fold_bias) * (1 + pressure)
-        )
+        weights[OpponentAction.FOLD] = fold_weight
     if OpponentAction.CALL in legal:
-        weights[OpponentAction.CALL] = max(
-            0.001,
-            (0.20 + effective_strength * 1.25)
-            * profile.call_bias
-            / (1 + bet_fraction * profile.size_sensitivity * 0.45),
-        )
+        weights[OpponentAction.CALL] = call_weight
     if OpponentAction.RAISE in legal:
         value_component = max(0.0, effective_strength - profile.value_raise_threshold) * 5.0
         bluff_component = (1.0 - effective_strength) * profile.bluff_frequency * 0.55
         weights[OpponentAction.RAISE] = max(
             0.001,
-            (value_component + bluff_component) * profile.aggression * profile.reraise_frequency,
+            (value_component + bluff_component)
+            * profile.aggression
+            * profile.reraise_frequency
+            * exp(-pressure * (0.20 + (1.0 - effective_strength) * 0.40)),
         )
     if OpponentAction.ALL_IN in legal:
-        forced_call = 1.5 if player.stack <= context.amount_to_call else 0.0
-        stack_pressure = profile.stack_sensitivity / max(spr, 0.25)
-        weights[OpponentAction.ALL_IN] = max(
-            0.001,
-            forced_call + effective_strength**3 * profile.aggression * stack_pressure * 0.35,
-        )
+        if player.stack <= context.amount_to_call:
+            # A stack-capped all-in here is a call, so it must use the same
+            # size- and holding-sensitive weight as an ordinary call.
+            weights[OpponentAction.ALL_IN] = call_weight
+        else:
+            stack_pressure = profile.stack_sensitivity / max(spr, 0.25)
+            weights[OpponentAction.ALL_IN] = max(
+                0.001,
+                effective_strength**3
+                * profile.aggression
+                * stack_pressure
+                * 0.35
+                * exp(-pressure * (0.15 + (1.0 - effective_strength) * 0.45)),
+            )
     return weights
 
 
@@ -270,7 +316,8 @@ def _normalize(weights: dict[OpponentAction, float]) -> dict[OpponentAction, flo
     return probabilities
 
 
-def _strength_value(strength: RelativeHandStrength) -> float:
+def relative_hand_strength_value(strength: RelativeHandStrength) -> float:
+    """Map the documented hand class to the policy's zero-to-one strength scale."""
     return {
         RelativeHandStrength.VERY_WEAK: 0.07,
         RelativeHandStrength.WEAK_SHOWDOWN_VALUE: 0.25,

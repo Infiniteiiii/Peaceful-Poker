@@ -74,7 +74,7 @@ def test_all_in_call_edge() -> None:
 def test_profitable_all_in_call_is_recommended_as_all_in() -> None:
     recommendation = recommend_action(state(100.0, stack=100.0, pot=400.0), equity(0.60))
 
-    assert recommendation.primary_action == "All In"
+    assert recommendation.primary_action == "Call all-in \u2014 100 chips"
     assert recommendation.primary_action in recommendation.legal_alternatives
 
 
@@ -87,15 +87,30 @@ def test_recommend_fold_when_below_required_equity() -> None:
 def test_recommend_call_when_above_required_equity() -> None:
     recommendation = recommend_action(state(50.0), equity(0.40))
 
-    assert recommendation.primary_action in {"Call", "Raise"}
+    assert recommendation.primary_action == "Call 50 chips"
     assert "guaranteed" not in recommendation.explanation.lower()
 
 
 def test_recommend_value_bet_when_checked_to() -> None:
     recommendation = recommend_action(state(0.0), equity(0.70))
 
-    assert recommendation.primary_action == "Bet"
-    assert recommendation.suggested_size is not None
+    assert recommendation.primary_action == "Bet 90 chips"
+    assert recommendation.suggested_size == 90.0
+
+
+def test_recommendation_keeps_an_85_chip_bet_distinct_from_all_in() -> None:
+    recommendation = recommend_action(state(0.0, stack=500.0, pot=100.0), equity(0.80))
+
+    assert recommendation.primary_action == "Bet 85 chips"
+    assert recommendation.suggested_size == 85.0
+    assert "all-in" not in recommendation.primary_action.casefold()
+
+
+def test_stack_committing_85_chip_bet_is_labelled_all_in() -> None:
+    recommendation = recommend_action(state(0.0, stack=85.0, pot=100.0), equity(0.80))
+
+    assert recommendation.primary_action == "Bet all-in \u2014 85 chips"
+    assert recommendation.suggested_size == 85.0
 
 
 def test_missing_equity_returns_legal_passive_guidance() -> None:

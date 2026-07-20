@@ -304,16 +304,29 @@ class CandidateActionResult:
     confidence_interval_low: float
     confidence_interval_high: float
     immediate_fold_probability: float
+    call_probability: float
     continue_probability: float
     exactly_one_continues_probability: float
     multiple_continue_probability: float
     facing_raise_probability: float
     showdown_probability: float
     conditional_showdown_equity: float
+    conditional_call_equity: float
+    conditional_raise_equity: float
+    average_calling_range_strength: float
+    average_raising_range_strength: float
+    fold_ev_component: float
+    call_ev_component: float
+    raise_ev_component: float
+    fold_branch_net_ev: float
+    call_branch_net_ev: float
+    raise_branch_net_ev: float
+    bet_percentage_of_pot: float | None
     average_final_pot: float
     average_hero_investment: float
     simulations: int
     assumptions: tuple[str, ...]
+    modelling_warnings: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -322,6 +335,10 @@ class ActionAwareResult:
 
     action_results: tuple[CandidateActionResult, ...]
     recommended_action: str
+    second_best_action: str | None
+    ev_difference: float | None
+    result_is_close: bool
+    all_in_recommended: bool
     uncertainty_note: str | None
     simulations_per_action: int
     random_seed: int | None

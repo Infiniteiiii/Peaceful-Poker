@@ -8,18 +8,21 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 SRC = ROOT / "src"
+
 if SRC.exists() and str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-plugin_root = (
-    Path(sys.prefix)
-    / "lib"
-    / f"python{sys.version_info.major}.{sys.version_info.minor}"
-    / "site-packages"
-    / "PySide6"
-    / "Qt"
-    / "plugins"
-)
-platform_plugins = plugin_root / "platforms"
-os.environ.setdefault("QT_PLUGIN_PATH", str(plugin_root))
-os.environ.setdefault("QT_QPA_PLATFORM_PLUGIN_PATH", str(platform_plugins))
+try:
+    import PySide6
+
+    pyside_root = Path(PySide6.__file__).resolve().parent
+    plugin_root = pyside_root / "plugins"
+    platform_plugins = plugin_root / "platforms"
+
+    if plugin_root.is_dir():
+        os.environ["QT_PLUGIN_PATH"] = str(plugin_root)
+
+    if platform_plugins.is_dir():
+        os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = str(platform_plugins)
+except ImportError:
+    pass

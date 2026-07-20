@@ -15,6 +15,7 @@ from poker_trainer.engine.opponent_policy import (
     legal_opponent_actions,
     load_opponent_profiles,
     opponent_action_distribution,
+    relative_hand_strength_value,
 )
 from poker_trainer.engine.range_parser import (
     available_combinations,
@@ -50,6 +51,30 @@ OpponentPolicyCallback = Callable[
 ]
 
 
+def uncontested_net_win(pot_before_action: float) -> float:
+    """Return decision-point net profit when every opponent folds."""
+    if pot_before_action < 0:
+        raise InvalidGameStateError("The pot before an action cannot be negative.")
+    return pot_before_action
+
+
+def heads_up_showdown_net(
+    pot_before_action: float,
+    hero_investment: float,
+    opponent_investment: float,
+    hero_share: float,
+) -> float:
+    """Settle a heads-up branch as returned chips minus Hero's new investment."""
+    if min(pot_before_action, hero_investment, opponent_investment) < 0:
+        raise InvalidGameStateError("Decision-point pot and investments cannot be negative.")
+    if not 0.0 <= hero_share <= 1.0:
+        raise InvalidGameStateError("Hero's showdown share must be from zero to one.")
+    matched = min(hero_investment, opponent_investment)
+    hero_uncalled = max(0.0, hero_investment - opponent_investment)
+    returned = hero_share * (pot_before_action + 2.0 * matched) + hero_uncalled
+    return returned - hero_investment
+
+
 @dataclass(slots=True)
 class _SimPlayer:
     player: TablePlayer
@@ -79,6 +104,8 @@ class _IterationResult:
     showdown_share: float
     final_pot: float
     hero_investment: float
+    response_branch: str
+    continuing_range_strength: float
 
 
 @dataclass(slots=True)
@@ -94,6 +121,18 @@ class _Accumulator:
     showdown_share_total: float = 0.0
     final_pot_total: float = 0.0
     hero_investment_total: float = 0.0
+    fold_branches: int = 0
+    call_branches: int = 0
+    raise_branches: int = 0
+    fold_ev_total: float = 0.0
+    call_ev_total: float = 0.0
+    raise_ev_total: float = 0.0
+    call_showdowns: int = 0
+    call_showdown_share_total: float = 0.0
+    raise_showdowns: int = 0
+    raise_showdown_share_total: float = 0.0
+    calling_strength_total: float = 0.0
+    raising_strength_total: float = 0.0
 
     def record(self, result: _IterationResult) -> None:
         self.count += 1
@@ -108,6 +147,23 @@ class _Accumulator:
         self.showdown_share_total += result.showdown_share
         self.final_pot_total += result.final_pot
         self.hero_investment_total += result.hero_investment
+        if result.response_branch == "fold":
+            self.fold_branches += 1
+            self.fold_ev_total += result.net_result
+        elif result.response_branch == "raise":
+            self.raise_branches += 1
+            self.raise_ev_total += result.net_result
+            self.raising_strength_total += result.continuing_range_strength
+            if result.reached_showdown:
+                self.raise_showdowns += 1
+                self.raise_showdown_share_total += result.showdown_share
+        else:
+            self.call_branches += 1
+            self.call_ev_total += result.net_result
+            self.calling_strength_total += result.continuing_range_strength
+            if result.reached_showdown:
+                self.call_showdowns += 1
+                self.call_showdown_share_total += result.showdown_share
 
 
 def action_aware_preset(name: str) -> ActionAwareSettings:
@@ -174,11 +230,18 @@ def calculate_action_aware_ev(
                 iteration % 100 == 0 or iteration == values.simulations_per_action
             ):
                 progress_callback(completed, total_steps)
-        results.append(_build_candidate_result(candidate, accumulator))
-    recommendation, uncertainty = _recommend(tuple(results))
+        results.append(_build_candidate_result(game_state, candidate, accumulator, values))
+    recommendation, second_best, difference, is_close, uncertainty = _recommend(tuple(results))
+    recommended_result = next(
+        result for result in results if result.candidate.label == recommendation
+    )
     return ActionAwareResult(
         action_results=tuple(results),
         recommended_action=recommendation,
+        second_best_action=second_best,
+        ev_difference=difference,
+        result_is_close=is_close,
+        all_in_recommended=recommended_result.candidate.kind is HeroActionKind.ALL_IN,
         uncertainty_note=uncertainty,
         simulations_per_action=values.simulations_per_action,
         random_seed=seed,
@@ -187,7 +250,8 @@ def calculate_action_aware_ev(
             "Action-aware EV is a bounded Monte Carlo estimate, not exact opponent prediction.",
             f"Policy mode: {values.mode.value}; "
             f"maximum raises: {values.maximum_raises_per_street}.",
-            "Future streets complete to showdown after the bounded current-street policy sequence.",
+            "This is a one-action policy approximation: after the bounded current-street "
+            "response, future cards complete to showdown without a full later-street betting tree.",
             "Previous contributions are sunk; EV tracks chips returned minus new hero investment.",
             "Opponent profiles and ranges are transparent behavioral assumptions.",
         ),
@@ -210,7 +274,7 @@ def _simulate_iteration(
     hero_investment = candidate.additional_investment
     hero_stack = max(0.0, table.hero.stack - candidate.additional_investment)
     hero_contribution = candidate.target_round_contribution
-    hero_all_in = hero_stack <= 0
+    hero_all_in = candidate.kind is HeroActionKind.ALL_IN or hero_stack <= 0
     highest = max(
         [hero_contribution, *(state.contribution for state in opponents.values())],
         default=hero_contribution,
@@ -254,6 +318,11 @@ def _simulate_iteration(
             prior_aggression=_prior_aggression(state.player),
             raises_so_far=raises,
             maximum_raises=settings.maximum_raises_per_street,
+            pot_before_action=max(0.0, pot - amount_to_call),
+            hero_action_kind=candidate.kind,
+            hero_additional_investment=candidate.additional_investment,
+            hero_all_in=candidate.kind is HeroActionKind.ALL_IN,
+            street=game_state.street.value,
         )
         policy_player = replace(
             state.player,
@@ -313,6 +382,9 @@ def _simulate_iteration(
             pot += additional_call
             hero_all_in = hero_stack <= 0
         else:
+            continuing_states = tuple(
+                state for state in opponents.values() if state.reaches_showdown
+            )
             return _IterationResult(
                 net_result=-hero_investment,
                 immediate_fold=False,
@@ -322,21 +394,27 @@ def _simulate_iteration(
                 faced_raise=faced_raise,
                 reached_showdown=False,
                 showdown_share=0.0,
-                final_pot=pot,
+                final_pot=_settled_final_pot(original_pot, hero_investment, opponents),
                 hero_investment=hero_investment,
+                response_branch="raise",
+                continuing_range_strength=_average_range_strength(
+                    continuing_states, tuple(game_state.community_cards)
+                ),
             )
 
     continuing = tuple(state for state in opponents.values() if state.reaches_showdown)
     if not continuing:
         return _IterationResult(
-            net_result=pot - hero_investment,
+            net_result=uncontested_net_win(original_pot),
             immediate_fold=aggression_reopens,
             opponents_continuing=0,
             faced_raise=faced_raise,
             reached_showdown=False,
             showdown_share=0.0,
-            final_pot=pot,
+            final_pot=_settled_final_pot(original_pot, hero_investment, opponents),
             hero_investment=hero_investment,
+            response_branch="fold",
+            continuing_range_strength=0.0,
         )
 
     rng.shuffle(remaining)
@@ -347,22 +425,35 @@ def _simulate_iteration(
         evaluate_hand_score((*state.hole_cards, *board)) for state in continuing
     )
     share = _pot_share(hero_score, opponent_scores)
-    returned = _hero_showdown_return(
-        original_pot,
-        hero_investment,
-        hero_score,
-        opponents,
-        opponent_scores,
-    )
+    if len(opponents) == 1:
+        net_result = heads_up_showdown_net(
+            original_pot,
+            hero_investment,
+            continuing[0].additional_investment,
+            share,
+        )
+    else:
+        returned = _hero_showdown_return(
+            original_pot,
+            hero_investment,
+            hero_score,
+            opponents,
+            opponent_scores,
+        )
+        net_result = returned - hero_investment
     return _IterationResult(
-        net_result=returned - hero_investment,
+        net_result=net_result,
         immediate_fold=False,
         opponents_continuing=len(continuing),
         faced_raise=faced_raise,
         reached_showdown=True,
         showdown_share=share,
-        final_pot=pot,
+        final_pot=_settled_final_pot(original_pot, hero_investment, opponents),
         hero_investment=hero_investment,
+        response_branch="raise" if faced_raise else "call",
+        continuing_range_strength=_average_range_strength(
+            continuing, tuple(game_state.community_cards)
+        ),
     )
 
 
@@ -548,6 +639,29 @@ def _position_fraction(order: tuple[int, ...], seat: int) -> float:
     return order.index(seat) / (len(order) - 1)
 
 
+def _average_range_strength(players: tuple[_SimPlayer, ...], board: tuple[Card, ...]) -> float:
+    if not players:
+        return 0.0
+    return sum(
+        relative_hand_strength_value(classify_opponent_hand(player.hole_cards, board))
+        for player in players
+    ) / len(players)
+
+
+def _settled_final_pot(
+    pot_before_action: float,
+    hero_investment: float,
+    opponents: dict[int, _SimPlayer],
+) -> float:
+    contributions = sorted(
+        (hero_investment, *(state.additional_investment for state in opponents.values())),
+        reverse=True,
+    )
+    second_largest = contributions[1] if len(contributions) > 1 else 0.0
+    uncalled = max(0.0, contributions[0] - second_largest)
+    return pot_before_action + sum(contributions) - uncalled
+
+
 def _prior_aggression(player: TablePlayer) -> int:
     return sum(
         1
@@ -557,12 +671,40 @@ def _prior_aggression(player: TablePlayer) -> int:
 
 
 def _build_candidate_result(
-    candidate: HeroCandidateAction, accumulator: _Accumulator
+    game_state: GameState,
+    candidate: HeroCandidateAction,
+    accumulator: _Accumulator,
+    settings: ActionAwareSettings,
 ) -> CandidateActionResult:
     count = accumulator.count or 1
     variance = accumulator.m2 / (count - 1) if count > 1 else 0.0
     standard_error = sqrt(max(0.0, variance) / count)
     margin = 1.96 * standard_error
+    aggressive = candidate.kind in {
+        HeroActionKind.BET,
+        HeroActionKind.RAISE,
+        HeroActionKind.ALL_IN,
+    }
+    pot_fraction = (
+        candidate.additional_investment / game_state.pot_size
+        if aggressive and game_state.pot_size > 0
+        else None
+    )
+    warnings: list[str] = []
+    if settings.simplified_future_streets and game_state.street.value in {"flop", "turn"}:
+        warnings.append(
+            "Future-street betting is simplified after the current response; later value and "
+            "future folds are not solved as a complete game tree."
+        )
+    if pot_fraction is not None and pot_fraction >= 1.5:
+        warnings.append(
+            "Large sizing is especially sensitive to the configured response policy and "
+            "simplified future-street assumptions."
+        )
+    if candidate.kind is HeroActionKind.ALL_IN:
+        warnings.append(
+            "All-in EV depends on the size-specific calling range and effective-stack cap."
+        )
     return CandidateActionResult(
         candidate=candidate,
         estimated_net_ev=accumulator.mean,
@@ -570,6 +712,7 @@ def _build_candidate_result(
         confidence_interval_low=accumulator.mean - margin,
         confidence_interval_high=accumulator.mean + margin,
         immediate_fold_probability=accumulator.immediate_folds / count,
+        call_probability=accumulator.call_branches / count,
         continue_probability=(accumulator.exactly_one + accumulator.multiple) / count,
         exactly_one_continues_probability=accumulator.exactly_one / count,
         multiple_continue_probability=accumulator.multiple / count,
@@ -580,6 +723,45 @@ def _build_candidate_result(
             if accumulator.showdowns
             else 0.0
         ),
+        conditional_call_equity=(
+            accumulator.call_showdown_share_total / accumulator.call_showdowns
+            if accumulator.call_showdowns
+            else 0.0
+        ),
+        conditional_raise_equity=(
+            accumulator.raise_showdown_share_total / accumulator.raise_showdowns
+            if accumulator.raise_showdowns
+            else 0.0
+        ),
+        average_calling_range_strength=(
+            accumulator.calling_strength_total / accumulator.call_branches
+            if accumulator.call_branches
+            else 0.0
+        ),
+        average_raising_range_strength=(
+            accumulator.raising_strength_total / accumulator.raise_branches
+            if accumulator.raise_branches
+            else 0.0
+        ),
+        fold_ev_component=accumulator.fold_ev_total / count,
+        call_ev_component=accumulator.call_ev_total / count,
+        raise_ev_component=accumulator.raise_ev_total / count,
+        fold_branch_net_ev=(
+            accumulator.fold_ev_total / accumulator.fold_branches
+            if accumulator.fold_branches
+            else 0.0
+        ),
+        call_branch_net_ev=(
+            accumulator.call_ev_total / accumulator.call_branches
+            if accumulator.call_branches
+            else 0.0
+        ),
+        raise_branch_net_ev=(
+            accumulator.raise_ev_total / accumulator.raise_branches
+            if accumulator.raise_branches
+            else 0.0
+        ),
+        bet_percentage_of_pot=None if pot_fraction is None else pot_fraction * 100.0,
         average_final_pot=accumulator.final_pot_total / count,
         average_hero_investment=accumulator.hero_investment_total / count,
         simulations=accumulator.count,
@@ -587,6 +769,7 @@ def _build_candidate_result(
             "Net EV starts at the current decision; previous hero contributions are sunk.",
             "Opponent responses follow sampled hands, entered profiles, ranges, and legal actions.",
         ),
+        modelling_warnings=tuple(warnings),
     )
 
 
@@ -598,32 +781,53 @@ def _fold_result(candidate: HeroCandidateAction, simulations: int) -> CandidateA
         confidence_interval_low=0.0,
         confidence_interval_high=0.0,
         immediate_fold_probability=0.0,
+        call_probability=0.0,
         continue_probability=0.0,
         exactly_one_continues_probability=0.0,
         multiple_continue_probability=0.0,
         facing_raise_probability=0.0,
         showdown_probability=0.0,
         conditional_showdown_equity=0.0,
+        conditional_call_equity=0.0,
+        conditional_raise_equity=0.0,
+        average_calling_range_strength=0.0,
+        average_raising_range_strength=0.0,
+        fold_ev_component=0.0,
+        call_ev_component=0.0,
+        raise_ev_component=0.0,
+        fold_branch_net_ev=0.0,
+        call_branch_net_ev=0.0,
+        raise_branch_net_ev=0.0,
+        bet_percentage_of_pot=None,
         average_final_pot=0.0,
         average_hero_investment=0.0,
         simulations=simulations,
         assumptions=("Folding has zero future EV; previous contributions are already sunk.",),
+        modelling_warnings=(),
     )
 
 
-def _recommend(results: tuple[CandidateActionResult, ...]) -> tuple[str, str | None]:
+def _recommend(
+    results: tuple[CandidateActionResult, ...],
+) -> tuple[str, str | None, float | None, bool, str | None]:
     ordered = sorted(results, key=lambda result: result.estimated_net_ev, reverse=True)
     best = ordered[0]
+    second_label: str | None = None
+    difference: float | None = None
+    is_close = False
     uncertainty: str | None = None
     if len(ordered) > 1:
         second = ordered[1]
+        second_label = second.candidate.label
+        difference = best.estimated_net_ev - second.estimated_net_ev
         combined_error = 1.96 * sqrt(best.standard_error**2 + second.standard_error**2)
-        if best.estimated_net_ev - second.estimated_net_ev <= combined_error:
+        if difference <= combined_error:
+            is_close = True
             uncertainty = (
                 f"{best.candidate.label} and {second.candidate.label} are statistically close "
                 "under the selected policy simulation."
             )
-    return best.candidate.label, uncertainty
+    return best.candidate.label, second_label, difference, is_close, uncertainty
 
 
 def _raise_if_cancelled(cancel_callback: CancelCallback | None) -> None:

@@ -1,5 +1,6 @@
 {
   "theme": "light",
+  "advanced_mode": false,
   "automatic_analysis": false,
   "default_player_count": 6,
   "default_simulation_count": 25000,

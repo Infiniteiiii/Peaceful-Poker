@@ -28,23 +28,26 @@ def legal_actions(
     """Return actions legal under the entered betting state."""
     if game_state.amount_to_call < 0 or game_state.hero_stack < 0:
         raise InvalidBetError("Betting values cannot be negative.")
+    available = min(
+        game_state.hero_stack,
+        game_state.effective_stack or game_state.hero_stack,
+    )
     if game_state.amount_to_call == 0:
         actions = [PlayerAction.CHECK]
-        if game_state.hero_stack > 0:
-            actions.append(PlayerAction.BET)
+        if available > 0:
+            if available > game_state.big_blind:
+                actions.append(PlayerAction.BET)
             actions.append(PlayerAction.ALL_IN)
         return tuple(actions)
 
     if game_state.amount_to_call > game_state.hero_stack:
         raise InvalidBetError("Amount to call cannot exceed hero stack.")
+    if available <= game_state.amount_to_call:
+        return (PlayerAction.FOLD, PlayerAction.ALL_IN)
     actions = [PlayerAction.FOLD, PlayerAction.CALL]
-    if game_state.hero_stack > game_state.amount_to_call:
-        if (
-            minimum_raise is None
-            or game_state.hero_stack >= game_state.amount_to_call + minimum_raise
-        ):
+    if available > game_state.amount_to_call:
+        required_raise = game_state.big_blind if minimum_raise is None else minimum_raise
+        if available > game_state.amount_to_call + required_raise:
             actions.append(PlayerAction.RAISE)
-        actions.append(PlayerAction.ALL_IN)
-    elif game_state.hero_stack == game_state.amount_to_call:
         actions.append(PlayerAction.ALL_IN)
     return tuple(dict.fromkeys(actions))

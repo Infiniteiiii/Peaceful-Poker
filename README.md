@@ -89,6 +89,53 @@ A complete analysis proceeds through the following stages:
 
 The poker engine is independent of the PySide6 interface. The interface constructs a validated game state, sends it to the analysis service, and displays the returned result.
 
+## Interface Modes and Guided Analysis
+
+Peaceful Poker opens in **Normal mode**, which keeps the common decision inputs visible and uses
+balanced opponents, random ranges, Standard showdown accuracy, and Quick action-aware analysis.
+Enable **Advanced settings** to edit exact action state, opponent assumptions, and simulation
+controls. Advanced values remain stored while the controls are hidden, and the selected interface
+mode is persisted in user settings.
+
+Hero's two required cards are marked with an asterisk. Compact information buttons beside the
+important fields explain input conventions. An invalid analysis marks every missing, malformed,
+or duplicated required card in one pass, also identifies incompatible call/stack, blind, and
+entered seat-list values, and focuses the first invalid control. Corrected controls clear their
+error state immediately while any remaining errors stay visible.
+
+Results use two top-level views. **Overview** presents the recommendation, key numbers, current
+hand, concise reasons, risks, and primary assumptions in titled result blocks. **Advanced** splits
+the complete entered state, current hand, draw analysis, raw showdown analysis, opponent
+assumptions, action-aware analysis, pot odds, and recommendation reasoning into separate blocks.
+Its action comparison pairs positive/negative EV bars with confidence intervals and response
+probabilities; the complete tables and copyable report remain available in adjacent tabs.
+Markdown and JSON export continue to use the full structured analysis result.
+
+All visible actions share one context-aware label convention. A first wager is `Bet N chips`, an
+increase over an existing wager is `Raise to N chips`, and a stack-committing action retains its
+context as `Bet all-in`, `Raise all-in`, or `Call all-in`. Overview, Advanced, Training, Markdown,
+and JSON output use the same candidate labels, without a separate contradictory suggested size.
+
+**Training** generates a valid seeded scenario and offers the actual sized candidates from the
+same legal-action generator used by action-aware analysis. Radio choices remain exclusive and
+visible while selected. The recommendation, equity, EV ranking, and explanation remain hidden
+until a choice is submitted and the normal analysis worker completes. A persistent Correct or
+Incorrect badge then shows the selected and recommended actions, with Full Explanation and Next
+hand controls. Every new or repeated Training hand resets to an explicit awaiting-choice state and
+restores Submit Choice. The session tracks attempts, exact matches, action-category matches, and
+recent decisions. **Help / About** includes a searchable Terminology page with bold, wrapping
+terms and definitions in one scrollable card list.
+
+Card rows provide a spaced **Pick Card** control. The picker keeps its footer controls visible,
+scrolls the card grid within the available screen, and includes **None** to clear a selected card.
+Native combo boxes retain keyboard and mouse behavior while their shared arrow indicates whether
+the popup is open. The individual-opponent editor uses taller rows so its single-line controls are
+not clipped.
+
+**New Hand** resets cards, player and opponent state, betting state, and stale results. **Clear
+Street** removes only the latest entered community-card street while preserving the rest of the
+hand.
+
 ---
 
 # Mathematical Model
@@ -834,6 +881,19 @@ Raw showdown equity assumes the included players reach showdown. Real decisions 
 
 A player behind the hero may fold, call, raise, or move all-in. The action-aware model treats those responses as random variables and estimates the value of the hero's decision under the selected opponent profiles.
 
+## Candidate Sizes And Effective Stack
+
+When no call is required, the candidate generator evaluates Check plus 25%, 33%, 50%, 66%,
+75%, 100%, and 150% pot bets. It also includes an effective-stack all-in whenever that chip
+commitment is meaningfully distinct. Amounts are rounded to cents, capped at the shorter effective
+stack, and deduplicated after capping. Consequently, a short stack can turn several theoretical
+sizes into one correctly labelled all-in without removing the smaller legal bets.
+
+When facing a bet, the engine keeps `raise-to` and `additional investment` separate. For example,
+if Hero has already contributed 10 chips, raising to 60 requires 50 additional chips. The same
+structured candidate objects and canonical labels are used by normal analysis, Training, the
+Advanced views, and exports.
+
 ---
 
 ## Action Order
@@ -902,10 +962,20 @@ The rule-based probabilities may depend on:
 - seat position
 - number of active opponents
 - prior aggression
+- whether Hero bet, raised, or moved all-in
+- the pot before Hero's action and Hero's additional investment
 
 Illegal actions receive no probability mass.
 
 The supported profiles are educational abstractions such as Tight Passive, Loose Passive, Tight Aggressive, Loose Aggressive, Calling Station, Nit, Maniac, and Unknown/Balanced. They are not empirically calibrated population models.
+
+The default Unknown/Balanced profile samples its documented `standard` range, then evaluates each
+sampled legal holding separately. Response pressure uses the wager divided by the pot before that
+wager, not the already enlarged pot. Larger wagers increase fold pressure and reduce call weight
+nonlinearly; stronger made hands and draws retain more continuation weight than weak holdings.
+A stack-capped all-in call uses the same size- and hand-sensitive call weight as a normal call. It
+does not receive a fixed forced-call bonus. This is a transparent educational policy, not a GTO or
+population-calibrated strategy.
 
 ---
 
@@ -913,7 +983,8 @@ The supported profiles are educational abstractions such as Tight Passive, Loose
 
 Equity conditional on being called differs from unconditional showdown equity.
 
-Let \(C_i\) indicate that at least one opponent continues against the hero's bet in trial \(i\). Then conditional equity can be estimated by:
+Let \(C_i\) indicate that at least one opponent calls without a raise against the hero's specific
+candidate size in trial \(i\). Then call-conditional equity can be estimated by:
 
 ```math
 \widehat{E}_{\text{called}}
@@ -925,7 +996,10 @@ Let \(C_i\) indicate that at least one opponent continues against the hero's bet
 }.
 ```
 
-This value is often lower than unconditional equity because weak opposing hands fold more frequently while stronger hands continue.
+Every size resamples legal combinations after card removal and applies the selected range and
+profile before response selection. This value is often lower than unconditional equity because
+weak opposing hands fold more frequently while stronger hands continue. Raise-branch equity is
+tracked separately rather than mixed into called equity.
 
 The action-aware output can distinguish:
 
@@ -935,7 +1009,9 @@ The action-aware output can distinguish:
 - probability multiple opponents continue
 - probability of facing a raise
 - probability of reaching showdown
-- equity conditional on continuation
+- equity conditional on an unraised call
+- equity conditional on a raise
+- average current strength of the sampled calling and raising ranges
 
 These quantities answer different questions and should not be merged into a single “adjusted equity” number.
 
@@ -1105,6 +1181,12 @@ E_c(P+2B)-B.
 The first term, \(FP\), is the value of winning the existing pot immediately. The hero's own bet is returned when everyone folds, so it is not counted as additional profit.
 
 This compact formula is useful for explanation, but the full action-aware simulator uses actual stack caps, callers, raises, and multiway pot shares rather than assuming one caller and one fixed response.
+
+Advanced Action-Aware Analysis exposes the conditional and probability-weighted EV of the fold,
+call, and raise branches. The three weighted components sum to total estimated net EV. It also
+shows the candidate as a percentage of the pre-action pot, additional Hero investment,
+size-specific called equity, sampled calling-range strength, average final pot, confidence
+interval, second-best action, EV gap, and modelling warnings.
 
 ---
 
@@ -1346,7 +1428,32 @@ Saved hands use a versioned JSON schema, while analysis reports can be exported 
 
 # Install and Run
 
-## Windows
+## Windows downloads
+
+### Portable user installation
+
+1. Download `Peaceful-Poker-1.1.0-Windows-x64.zip`.
+2. Extract the complete ZIP; do not run the executable from inside the archive.
+3. Open the extracted `Peaceful Poker` folder.
+4. Double-click `Peaceful Poker.exe`.
+
+Keep the executable and its `_internal` folder together. The portable build includes Python,
+PySide6, Qt, and the Windows platform plugin, so Python and PowerShell are not required on the
+user's computer.
+
+### Installer installation
+
+1. Download `Peaceful-Poker-Setup-1.1.0.exe`.
+2. Run the Setup executable.
+3. Open Peaceful Poker from the Start menu or the optional desktop shortcut.
+
+Early releases are unsigned, so Microsoft Defender SmartScreen or another Windows reputation
+service may display a warning. Confirm that the filename and published SHA-256 checksum match the
+release before continuing.
+
+## Running from source
+
+### Windows
 
 ```powershell
 git clone https://github.com/Infiniteiiii/Peaceful_Poker.git
@@ -1366,7 +1473,7 @@ The installed command also launches the app:
 peaceful-poker
 ```
 
-## macOS or Linux
+### macOS or Linux
 
 ```bash
 git clone https://github.com/Infiniteiiii/Peaceful_Poker.git
@@ -1409,7 +1516,11 @@ python -m pip check
 
 GitHub Actions runs the test suite on supported Python versions with Qt configured for headless testing.
 
-Build the Windows one-folder release:
+Activate the repository virtual environment before running Windows release scripts. The build
+script validates the environment, required build packages, source checks, bundled Qt plugin, and
+the packaged application smoke test.
+
+### Building the Windows app
 
 ```powershell
 .\scripts\build_windows.ps1
@@ -1422,6 +1533,29 @@ dist\Peaceful Poker\Peaceful Poker.exe
 ```
 
 Distribute the complete `dist\Peaceful Poker` folder, not only the executable.
+
+### Creating the portable ZIP
+
+After a successful Windows application build:
+
+```powershell
+.\scripts\package_windows_zip.ps1
+```
+
+This creates `dist\Peaceful-Poker-<version>-Windows-x64.zip` from the complete one-folder build and
+prints its size and SHA-256 checksum.
+
+### Building the installer
+
+Install Inno Setup 6, create the Windows application build, then run:
+
+```powershell
+.\scripts\build_installer.ps1
+```
+
+The installer is written to `dist\installer\Peaceful-Poker-Setup-<version>.exe`. The script prints
+its size and SHA-256 checksum. Installation is per-user by default, does not add Python or Peaceful
+Poker to `PATH`, and a normal uninstall leaves user data intact.
 
 Run source and packaged verification with:
 
@@ -1468,6 +1602,9 @@ Additional documentation:
 - Monte Carlo confidence intervals describe sampling uncertainty, not total model uncertainty.
 - Basic call EV excludes future betting, rake, implied odds, reverse implied odds, tournament utility, and opponent adaptation.
 - Action-aware simulation uses a bounded policy model rather than an exhaustive multi-street game tree.
+- After the bounded current-street response, future cards run to showdown without modelling every
+  later-street check, bet, raise, fold, draw realization, or change in range. Extreme flop and turn
+  sizes therefore carry an explicit sensitivity warning even when their sampled EV is highest.
 - Real opponents can behave differently from their selected profile.
 - No finite model can know hidden cards or future human decisions with certainty.
 
