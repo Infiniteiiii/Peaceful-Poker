@@ -6,6 +6,36 @@ The project is designed to make the reasoning visible. It is not an online poker
 
 ---
 
+## Download Peaceful Poker
+
+### Windows
+
+[Download the portable Windows version](https://github.com/Infiniteiiii/Peaceful-Poker/releases/latest/download/Peaceful-Poker-Windows-x64.zip)
+
+[View the latest GitHub Release](https://github.com/Infiniteiiii/Peaceful-Poker/releases/latest)
+
+Python is not required for the packaged Windows download.
+
+### Portable ZIP
+
+1. Download the ZIP from the link above.
+2. Extract the entire ZIP.
+3. Open the extracted `Peaceful Poker` folder.
+4. Double-click `Peaceful Poker.exe`.
+5. Do not run the executable from inside the ZIP.
+
+### Windows installer
+
+When a Setup executable is listed on the official Releases page, download it, run the installer,
+follow the prompts, and open Peaceful Poker through the Start menu or optional desktop shortcut.
+
+The GitHub-generated **Source code** ZIP files contain the Python project source; they are not the
+ready-to-run Windows application. Download application files only from this repository's
+[official Releases page](https://github.com/Infiniteiiii/Peaceful-Poker/releases). Early unsigned
+releases may display a Windows reputation or security warning.
+
+---
+
 ## Table of Contents
 
 1. [Core Features](#core-features)
