@@ -31,6 +31,11 @@ def enter_default_cards(window: MainWindow) -> None:
         edit.setText(value)
 
 
+def _widget_rect_in(widget: QtWidgets.QWidget, ancestor: QtWidgets.QWidget) -> QtCore.QRect:
+    """Return a widget rectangle mapped into one shared coordinate system."""
+    return QtCore.QRect(widget.mapTo(ancestor, widget.rect().topLeft()), widget.size())
+
+
 @pytest.fixture
 def window(
     qapp: Any,
@@ -526,7 +531,11 @@ def test_training_layout_stays_at_top_and_resets_for_repeated_hands(
     section_titles = window.window.findChildren(QtWidgets.QLabel, "sectionTitle")
     results_title = next(label for label in section_titles if label.text() == "Results")
     table_title = next(label for label in section_titles if label.text() == "Table")
-    assert window.training_panel.geometry().top() < window.tabs.geometry().top()
+    results_parent = window.training_panel.parentWidget()
+    assert results_parent is window.tabs.parentWidget()
+    results_layout = results_parent.layout()
+    assert results_layout is not None
+    assert results_layout.indexOf(window.training_panel) < results_layout.indexOf(window.tabs)
     assert (
         results_title.mapTo(window.window, QtCore.QPoint()).y()
         < window.training_panel.mapTo(window.window, QtCore.QPoint()).y()
@@ -558,7 +567,22 @@ def test_training_layout_stays_at_top_and_resets_for_repeated_hands(
             assert window.progress.isHidden()
             assert window.training_feedback.isVisible()
             assert window.training_feedback.height() >= 96
-            assert window.training_panel.geometry().bottom() <= window.tabs.geometry().top()
+            results_layout.invalidate()
+            assert results_layout.activate()
+            QtWidgets.QApplication.processEvents()
+            qtbot.waitUntil(
+                lambda: (
+                    _widget_rect_in(window.training_panel, window.window).bottom()
+                    < _widget_rect_in(window.tabs, window.window).top()
+                ),
+                timeout=2_000,
+            )
+            panel_rect = _widget_rect_in(window.training_panel, window.window)
+            tabs_rect = _widget_rect_in(window.tabs, window.window)
+            feedback_rect = _widget_rect_in(window.training_feedback, window.window)
+            assert panel_rect.bottom() < tabs_rect.top()
+            assert panel_rect.contains(feedback_rect)
+            assert window.results_scroll.verticalScrollBar().maximum() > 0
         qtbot.mouseClick(window.training_next, QtCore.Qt.MouseButton.LeftButton)
         assert window.training_seed == initial_seed + cycle + 1
         assert window.training_submit.isVisible()

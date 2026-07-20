@@ -396,7 +396,20 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
         self.main_splitter.setChildrenCollapsible(False)
         self.main_splitter.setHandleWidth(10)
         self.main_splitter.addWidget(self._setup_panel())
-        self.main_splitter.addWidget(self._results_panel())
+        self.results_panel = self._results_panel()
+        self.results_panel.setSizePolicy(
+            self.qtwidgets.QSizePolicy.Policy.Ignored,
+            self.qtwidgets.QSizePolicy.Policy.Ignored,
+        )
+        self.results_scroll = self.qtwidgets.QScrollArea()
+        self.results_scroll.setObjectName("resultsScroll")
+        self.results_scroll.setWidgetResizable(True)
+        self.results_scroll.setFrameShape(self.qtwidgets.QFrame.Shape.NoFrame)
+        self.results_scroll.setHorizontalScrollBarPolicy(
+            self.qtcore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        self.results_scroll.setWidget(self.results_panel)
+        self.main_splitter.addWidget(self.results_scroll)
         self.main_splitter.setStretchFactor(0, 1)
         self.main_splitter.setStretchFactor(1, 1)
         self.main_splitter.setSizes([580, 580])
@@ -1755,6 +1768,7 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
         self.training_choice = None
         self.training_phase = _TrainingPhase.INACTIVE
         self.training_panel.hide()
+        self.results_panel.setMinimumHeight(0)
         self.tabs.show()
         self.status_label.show()
         self.progress.show()
@@ -2185,6 +2199,7 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
         self.training_phase = _TrainingPhase.INACTIVE
         self.player_overrides.clear()
         self.training_panel.hide()
+        self.results_panel.setMinimumHeight(0)
         self.tabs.show()
         self.status_label.show()
         self.progress.show()
@@ -2368,6 +2383,7 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
         self.training_submit.setEnabled(False)
         self.training_submit.show()
         self.training_panel.setMinimumHeight(0)
+        self.results_panel.setMinimumHeight(0)
         self.training_scenario.show()
         self.training_choice_scroll.setMaximumHeight(190)
         self.training_choice_scroll.show()
@@ -2465,10 +2481,20 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
             max(self.training_feedback.width(), 300)
         )
         self.training_feedback.setMinimumHeight(max(96, feedback_height))
-        self.training_panel.setMinimumHeight(245)
+        training_layout = self.training_panel.layout()
+        training_layout.invalidate()
+        training_layout.activate()
+        self.training_panel.setMinimumHeight(self.training_panel.minimumSizeHint().height())
+        self.training_panel.updateGeometry()
         self.tabs.show()
         self.tabs.setCurrentWidget(self.advanced_tabs)
         self.advanced_tabs.setCurrentWidget(self.advanced_details_page)
+        results_layout = self.results_panel.layout()
+        results_layout.invalidate()
+        results_layout.activate()
+        self.results_panel.setMinimumHeight(self.results_panel.minimumSizeHint().height())
+        self.results_panel.updateGeometry()
+        self.results_scroll.ensureWidgetVisible(self.training_panel, 0, 0)
 
     def about(self) -> None:
         if self.help_dialog is not None and self.help_dialog.isVisible():
@@ -2673,6 +2699,7 @@ class MainWindow:  # pragma: no cover - behavior covered through Qt integration 
         self.analysis_id += 1
         self.latest_result = None
         self.training_panel.hide()
+        self.results_panel.setMinimumHeight(0)
         self.tabs.show()
         self.status_label.show()
         self.progress.show()
